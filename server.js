@@ -214,14 +214,37 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('🔌 User disconnected - Socket ID:', socket.id);
     if (socket.userId) {
-      // Only remove from queue if not paired
       if (!activePairings.has(socket.userId)) {
         console.log('🚪 Removing unpaired user from queue - UserId:', socket.userId);
         const beforeLength = waitingUsers.length;
         waitingUsers = waitingUsers.filter(u => u.userId !== socket.userId);
         console.log('📊 Queue length after disconnect - Before:', beforeLength, 'After:', waitingUsers.length);
       } else {
-        console.log('🔗 User is paired, keeping in active pairings:', socket.userId);
+        // User was paired - add partner back to queue
+        const pairingData = activePairings.get(socket.userId);
+        const { chatId, users: pairedUsers } = pairingData;
+        
+        console.log('👋 Paired user disconnected - UserId:', socket.userId, 'ChatId:', chatId);
+        
+        // Add both users back to queue
+        pairedUsers.forEach(user => {
+          if (users.has(user.userId)) {
+            const userData = users.get(user.userId);
+            waitingUsers.push(userData);
+            console.log('🔄 Added user back to queue:', user.username, '(', user.userId, ')');
+          }
+          activePairings.delete(user.userId);
+        });
+        
+        // Clean up chat
+        activeChats.delete(chatId);
+        console.log('🗑️ Cleaned up chat room:', chatId);
+        
+        // Notify remaining partner they're back in queue
+        io.emit('partner-left', { chatId });
+        
+        // Try to pair users immediately
+        tryPairUsers();
       }
     }
   });
