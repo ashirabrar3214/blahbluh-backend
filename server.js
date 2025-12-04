@@ -23,6 +23,7 @@ let waitingUsers = [];
 let activeChats = new Map();
 let users = new Map();
 let activePairings = new Map(); // userId -> pairing data
+let userSockets = new Map(); // userId -> Set of socket IDs
 
 // Random name generation
 const adjectives = ['Shearing', 'Colliding', 'Dancing', 'Flying', 'Jumping', 'Spinning', 'Glowing', 'Bouncing', 'Sliding', 'Rolling', 'Floating', 'Zooming', 'Giggling', 'Sparkling', 'Wobbling', 'Drifting', 'Blazing', 'Twinkling', 'Rushing', 'Swirling'];
@@ -32,6 +33,12 @@ function generateRandomName() {
   const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
   const noun = nouns[Math.floor(Math.random() * nouns.length)];
   return `${adjective} ${noun}`;
+}
+
+// Check if user is truly offline (no active sockets)
+function isUserOffline(userId) {
+  const sockets = userSockets.get(userId);
+  return !sockets || sockets.size === 0;
 }
 
 // Continuous pairing function
@@ -141,10 +148,32 @@ app.post('/api/leave-queue', (req, res) => {
   waitingUsers = waitingUsers.filter(u => u.userId !== userId);
   const afterLength = waitingUsers.length;
   
-  // Remove from active pairings if exists
+  // Handle partner leaving if user was in active chat
   if (activePairings.has(userId)) {
-    console.log('🗑️ Removing user from active pairings:', userId);
-    activePairings.delete(userId);
+    const pairingData = activePairings.get(userId);
+    const { chatId, users: pairedUsers } = pairingData;
+    
+    console.log('👋 User leaving active chat - UserId:', userId, 'ChatId:', chatId);
+    
+    // Add both users back to queue
+    pairedUsers.forEach(user => {
+      if (users.has(user.userId)) {
+        const userData = users.get(user.userId);
+        waitingUsers.push(userData);
+        console.log('🔄 Added user back to queue:', user.username, '(', user.userId, ')');
+      }
+      activePairings.delete(user.userId);
+    });
+    
+    // Clean up chat
+    activeChats.delete(chatId);
+    console.log('🗑️ Cleaned up chat room:', chatId);
+    
+    // Notify remaining partner they're back in queue
+    io.emit('partner-left', { chatId });
+    
+    // Try to pair users immediately
+    tryPairUsers();
   }
   
   console.log('📊 Queue length before:', beforeLength, 'after:', afterLength);
@@ -176,6 +205,13 @@ io.on('connection', (socket) => {
     const { userId } = data;
     console.log('📝 User registered with socket - UserId:', userId, 'SocketId:', socket.id);
     socket.userId = userId;
+    
+    // Track user sockets
+    if (!userSockets.has(userId)) {
+      userSockets.set(userId, new Set());
+    }
+    userSockets.get(userId).add(socket.id);
+    console.log('📊 User socket count:', userSockets.get(userId).size);
     
     // Check if user has an active pairing and resend event
     if (activePairings.has(userId)) {
@@ -214,37 +250,54 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('🔌 User disconnected - Socket ID:', socket.id);
     if (socket.userId) {
-      if (!activePairings.has(socket.userId)) {
-        console.log('🚪 Removing unpaired user from queue - UserId:', socket.userId);
-        const beforeLength = waitingUsers.length;
-        waitingUsers = waitingUsers.filter(u => u.userId !== socket.userId);
-        console.log('📊 Queue length after disconnect - Before:', beforeLength, 'After:', waitingUsers.length);
-      } else {
-        // User was paired - add partner back to queue
-        const pairingData = activePairings.get(socket.userId);
-        const { chatId, users: pairedUsers } = pairingData;
+      // Remove socket from user's socket set
+      if (userSockets.has(socket.userId)) {
+        userSockets.get(socket.userId).delete(socket.id);
+        console.log('📊 Remaining sockets for user:', userSockets.get(socket.userId).size);
         
-        console.log('👋 Paired user disconnected - UserId:', socket.userId, 'ChatId:', chatId);
-        
-        // Add both users back to queue
-        pairedUsers.forEach(user => {
-          if (users.has(user.userId)) {
-            const userData = users.get(user.userId);
-            waitingUsers.push(userData);
-            console.log('🔄 Added user back to queue:', user.username, '(', user.userId, ')');
+        // Only handle user disconnect if ALL sockets are gone
+        if (isUserOffline(socket.userId)) {
+          console.log('🚪 User fully offline - UserId:', socket.userId);
+          
+          if (!activePairings.has(socket.userId)) {
+            // Remove from queue if not paired
+            console.log('🚪 Removing unpaired user from queue - UserId:', socket.userId);
+            const beforeLength = waitingUsers.length;
+            waitingUsers = waitingUsers.filter(u => u.userId !== socket.userId);
+            console.log('📊 Queue length after disconnect - Before:', beforeLength, 'After:', waitingUsers.length);
+          } else {
+            // User was paired - add partner back to queue
+            const pairingData = activePairings.get(socket.userId);
+            const { chatId, users: pairedUsers } = pairingData;
+            
+            console.log('👋 Paired user fully offline - UserId:', socket.userId, 'ChatId:', chatId);
+            
+            // Add both users back to queue
+            pairedUsers.forEach(user => {
+              if (users.has(user.userId)) {
+                const userData = users.get(user.userId);
+                waitingUsers.push(userData);
+                console.log('🔄 Added user back to queue:', user.username, '(', user.userId, ')');
+              }
+              activePairings.delete(user.userId);
+            });
+            
+            // Clean up chat
+            activeChats.delete(chatId);
+            console.log('🗑️ Cleaned up chat room:', chatId);
+            
+            // Notify remaining partner they're back in queue
+            io.emit('partner-left', { chatId });
+            
+            // Try to pair users immediately
+            tryPairUsers();
           }
-          activePairings.delete(user.userId);
-        });
-        
-        // Clean up chat
-        activeChats.delete(chatId);
-        console.log('🗑️ Cleaned up chat room:', chatId);
-        
-        // Notify remaining partner they're back in queue
-        io.emit('partner-left', { chatId });
-        
-        // Try to pair users immediately
-        tryPairUsers();
+          
+          // Clean up user socket tracking
+          userSockets.delete(socket.userId);
+        } else {
+          console.log('🔄 User still has active sockets, not removing from chat');
+        }
       }
     }
   });
