@@ -33,6 +33,39 @@ function generateRandomName() {
   return `${adjective} ${noun}`;
 }
 
+// Event-driven pairing function
+function tryPairUsers() {
+  if (waitingUsers.length >= 2) {
+    console.log('🔄 Event-driven pairing started - Users in queue:', waitingUsers.length);
+    
+    const user1 = waitingUsers.shift();
+    const user2 = waitingUsers.shift();
+    
+    console.log('👥 Pairing users:', user1.username, '(', user1.userId, ') with', user2.username, '(', user2.userId, ')');
+    
+    const chatId = uuidv4();
+    const chat = {
+      id: chatId,
+      users: [user1, user2],
+      createdAt: Date.now(),
+      messages: []
+    };
+    
+    activeChats.set(chatId, chat);
+    console.log('💬 Created new chat room:', chatId);
+    console.log('📊 Active chats count:', activeChats.size);
+    
+    // Notify users they've been paired
+    console.log('📢 Broadcasting pairing notification to all clients');
+    io.emit('chat-paired', {
+      chatId,
+      users: [user1, user2]
+    });
+    
+    console.log('✅ Event-driven pairing completed successfully');
+  }
+}
+
 console.log('🚀 Server initializing...');
 
 // Root endpoint
@@ -81,6 +114,9 @@ app.post('/api/join-queue', (req, res) => {
   console.log('✅ User added to queue:', userId, 'Username:', username);
   console.log('📊 Current queue length:', waitingUsers.length);
   console.log('👥 Users in queue:', waitingUsers.map(u => `${u.username}(${u.userId})`));
+
+  // Immediately try to pair users (event-driven)
+  tryPairUsers();
 
   res.json({ 
     message: 'Added to queue', 
@@ -168,40 +204,13 @@ io.on('connection', (socket) => {
   });
 });
 
-// Pairing logic - runs every 2 seconds
+// Safety net - periodic check (reduced frequency since pairing is now event-driven)
 setInterval(() => {
-  if (waitingUsers.length >= 2) {
-    console.log('🔄 Pairing process started - Users in queue:', waitingUsers.length);
-    
-    const user1 = waitingUsers.shift();
-    const user2 = waitingUsers.shift();
-    
-    console.log('👥 Pairing users:', user1.username, '(', user1.userId, ') with', user2.username, '(', user2.userId, ')');
-    
-    const chatId = uuidv4();
-    const chat = {
-      id: chatId,
-      users: [user1, user2],
-      createdAt: Date.now(),
-      messages: []
-    };
-    
-    activeChats.set(chatId, chat);
-    console.log('💬 Created new chat room:', chatId);
-    console.log('📊 Active chats count:', activeChats.size);
-    
-    // Notify users they've been paired
-    console.log('📢 Broadcasting pairing notification to all clients');
-    io.emit('chat-paired', {
-      chatId,
-      users: [user1, user2]
-    });
-    
-    console.log('✅ Pairing completed successfully');
-  } else if (waitingUsers.length > 0) {
-    console.log('⏳ Waiting for more users - Current queue:', waitingUsers.length);
+  if (waitingUsers.length > 0) {
+    console.log('🔍 Safety check - Current queue:', waitingUsers.length);
+    tryPairUsers();
   }
-}, 2000);
+}, 5000);
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
