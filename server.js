@@ -33,10 +33,10 @@ function generateRandomName() {
   return `${adjective} ${noun}`;
 }
 
-// Event-driven pairing function
+// Continuous pairing function
 function tryPairUsers() {
-  if (waitingUsers.length >= 2) {
-    console.log('🔄 Event-driven pairing started - Users in queue:', waitingUsers.length);
+  while (waitingUsers.length >= 2) {
+    console.log('🔄 Continuous pairing started - Users in queue:', waitingUsers.length);
     
     const user1 = waitingUsers.shift();
     const user2 = waitingUsers.shift();
@@ -62,7 +62,7 @@ function tryPairUsers() {
       users: [user1, user2]
     });
     
-    console.log('✅ Event-driven pairing completed successfully');
+    console.log('✅ Pairing completed - Remaining in queue:', waitingUsers.length);
   }
 }
 
@@ -115,7 +115,7 @@ app.post('/api/join-queue', (req, res) => {
   console.log('📊 Current queue length:', waitingUsers.length);
   console.log('👥 Users in queue:', waitingUsers.map(u => `${u.username}(${u.userId})`));
 
-  // Immediately try to pair users (event-driven)
+  // Continuously pair all available users
   tryPairUsers();
 
   res.json({ 
@@ -204,13 +204,13 @@ io.on('connection', (socket) => {
   });
 });
 
-// Safety net - periodic check (reduced frequency since pairing is now event-driven)
+// Continuous pairing check - runs every 1 second
 setInterval(() => {
-  if (waitingUsers.length > 0) {
-    console.log('🔍 Safety check - Current queue:', waitingUsers.length);
+  if (waitingUsers.length >= 2) {
+    console.log('🔍 Continuous pairing check - Current queue:', waitingUsers.length);
     tryPairUsers();
   }
-}, 5000);
+}, 1000);
 
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
