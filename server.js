@@ -23,7 +23,7 @@ const socketStability = new Map();
 const adjectives = ['Happy', 'Silly', 'Brave', 'Clever', 'Funny', 'Cool', 'Swift', 'Bright'];
 const nouns = ['Panda', 'Tiger', 'Eagle', 'Dolphin', 'Fox', 'Wolf', 'Bear', 'Lion'];
 
-app.post('/api/generate-user', (req, res) => {
+app.post('/api/generate-user-id', (req, res) => {
   const userId = uuidv4();
   const username = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}`;
   res.json({ userId, username });
