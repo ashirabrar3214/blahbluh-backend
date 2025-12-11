@@ -19,8 +19,8 @@ const queue = [];
 const activeChats = new Map();
 const userSockets = new Map();
 
-const adjectives = ['Happy', 'Silly', 'Brave', 'Clever', 'Funny', 'Cool', 'Swift', 'Bright', 'Wild', 'Gentle'];
-const nouns = ['Panda', 'Tiger', 'Eagle', 'Dolphin', 'Fox', 'Wolf', 'Bear', 'Lion', 'Shark', 'Raven'];
+const adjectives = ['Shearing', 'Dancing', 'Flying', 'Singing', 'Jumping', 'Glowing', 'Sparkling', 'Whispering', 'Laughing', 'Dreaming', 'Floating', 'Spinning', 'Bouncing', 'Twinkling', 'Giggling'];
+const nouns = ['Ramen', 'Pizza', 'Taco', 'Sushi', 'Waffle', 'Muffin', 'Cookie', 'Donut', 'Bagel', 'Pancake', 'Noodle', 'Pretzel', 'Croissant', 'Burrito', 'Sandwich'];
 
 // FIXED: Changed from POST to GET
 app.get('/api/generate-user-id', (req, res) => {
