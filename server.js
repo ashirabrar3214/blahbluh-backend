@@ -103,6 +103,26 @@ io.on('connection', (socket) => {
     io.to(chatId).emit('new-message', messageData);
   });
 
+  socket.on('leave-chat', ({ chatId, userId }) => {
+    // Find the chat and notify the partner
+    const chatData = activeChats.get(chatId);
+    if (chatData) {
+      const partner = chatData.users.find(u => u.userId !== userId);
+      if (partner) {
+        const partnerSocket = userSockets.get(partner.userId);
+        if (partnerSocket && partnerSocket.connected) {
+          partnerSocket.emit('partner-disconnected');
+          // Put partner back in queue
+          if (!queue.find(u => u.userId === partner.userId)) {
+            queue.push(partner);
+          }
+        }
+      }
+      // Remove the chat
+      activeChats.delete(chatId);
+    }
+  });
+
   socket.on('disconnect', () => {
     for (const [userId, sock] of userSockets.entries()) {
       if (sock === socket) {
