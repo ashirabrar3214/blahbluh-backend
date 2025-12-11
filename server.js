@@ -106,6 +106,29 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     for (const [userId, sock] of userSockets.entries()) {
       if (sock === socket) {
+        // Find if this user was in an active chat
+        for (const [chatId, chatData] of activeChats.entries()) {
+          const userInChat = chatData.users.find(u => u.userId === userId);
+          if (userInChat) {
+            // Find the partner
+            const partner = chatData.users.find(u => u.userId !== userId);
+            if (partner) {
+              const partnerSocket = userSockets.get(partner.userId);
+              if (partnerSocket && partnerSocket.connected) {
+                // Notify partner that user disconnected
+                partnerSocket.emit('partner-disconnected');
+                // Put partner back in queue
+                if (!queue.find(u => u.userId === partner.userId)) {
+                  queue.push(partner);
+                }
+              }
+            }
+            // Remove the chat
+            activeChats.delete(chatId);
+            break;
+          }
+        }
+        
         userSockets.delete(userId);
         users.delete(userId);
         const index = queue.findIndex(u => u.userId === userId);
