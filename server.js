@@ -18,6 +18,7 @@ app.use(express.json());
 const queue = [];
 const activeChats = new Map();
 const userSockets = new Map();
+const users = new Map(); // Store user data: userId -> {userId, username}
 
 const adjectives = ['Shearing', 'Dancing', 'Flying', 'Singing', 'Jumping', 'Glowing', 'Sparkling', 'Whispering', 'Laughing', 'Dreaming', 'Floating', 'Spinning', 'Bouncing', 'Twinkling', 'Giggling'];
 const nouns = ['Ramen', 'Pizza', 'Taco', 'Sushi', 'Waffle', 'Muffin', 'Cookie', 'Donut', 'Bagel', 'Pancake', 'Noodle', 'Pretzel', 'Croissant', 'Burrito', 'Sandwich'];
@@ -26,19 +27,22 @@ const nouns = ['Ramen', 'Pizza', 'Taco', 'Sushi', 'Waffle', 'Muffin', 'Cookie', 
 app.get('/api/generate-user-id', (req, res) => {
   const userId = uuidv4();
   const username = `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
-  res.json({ userId, username });
+  const userData = { userId, username };
+  users.set(userId, userData);
+  res.json(userData);
 });
 
 app.post('/api/join-queue', (req, res) => {
-  const { userId, username } = req.body;
+  const { userId } = req.body;
+  const userData = users.get(userId);
   const socket = userSockets.get(userId);
   
-  if (socket && socket.connected && !queue.find(u => u.userId === userId)) {
-    queue.push({ userId, username });
+  if (userData && socket && socket.connected && !queue.find(u => u.userId === userId)) {
+    queue.push(userData);
     setTimeout(tryMatchUsers, 500);
   }
   const position = queue.findIndex(u => u.userId === userId) + 1;
-  res.json({ userId, username, queuePosition: position });
+  res.json({ ...userData, queuePosition: position });
 });
 
 app.post('/api/leave-queue', (req, res) => {
@@ -103,6 +107,7 @@ io.on('connection', (socket) => {
     for (const [userId, sock] of userSockets.entries()) {
       if (sock === socket) {
         userSockets.delete(userId);
+        users.delete(userId);
         const index = queue.findIndex(u => u.userId === userId);
         if (index !== -1) queue.splice(index, 1);
         console.log(`User disconnected and removed: ${userId}`);
