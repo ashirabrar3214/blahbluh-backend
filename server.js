@@ -117,10 +117,6 @@ io.on('connection', (socket) => {
               if (partnerSocket && partnerSocket.connected) {
                 // Notify partner that user disconnected
                 partnerSocket.emit('partner-disconnected');
-                // Put partner back in queue
-                if (!queue.find(u => u.userId === partner.userId)) {
-                  queue.push(partner);
-                }
               }
             }
             // Remove the chat
