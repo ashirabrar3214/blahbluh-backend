@@ -91,16 +91,22 @@ io.on('connection', (socket) => {
     socket.join(chatId);
   });
 
-  socket.on('send-message', ({ chatId, message, userId, username }) => {
+  socket.on('send-message', ({ chatId, message, userId, username, replyTo }) => {
     const messageData = {
       id: uuidv4(),
       chatId,
       message,
       userId,
       username,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      replyTo: replyTo || null,
+      reactions: {}
     };
     io.to(chatId).emit('new-message', messageData);
+  });
+
+  socket.on('add-reaction', ({ chatId, messageId, emoji, userId }) => {
+    io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
   });
 
   socket.on('leave-chat', ({ chatId, userId }) => {
