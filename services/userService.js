@@ -4,52 +4,73 @@ const { v4: uuidv4 } = require('uuid');
 const adjectives = ['Shearing', 'Dancing', 'Flying', 'Singing', 'Jumping', 'Glowing', 'Sparkling', 'Whispering', 'Laughing', 'Dreaming', 'Floating', 'Spinning', 'Bouncing', 'Twinkling', 'Giggling'];
 const nouns = ['Ramen', 'Pizza', 'Taco', 'Sushi', 'Waffle', 'Muffin', 'Cookie', 'Donut', 'Bagel', 'Pancake', 'Noodle', 'Pretzel', 'Croissant', 'Burrito', 'Sandwich'];
 
+// In-memory fallback when Supabase is not available
+const memoryUsers = new Map();
+
 class UserService {
   async createUser() {
     const userId = uuidv4();
     const username = `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
     
-    const { data, error } = await supabase
-      .from('users')
-      .insert({
-        id: userId,
-        username,
-        gender: null,
-        country: null,
-        pfp: null,
-        is_reported: false,
-        friends: [],
-        blocked_users: [],
-        created_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+    const userData = {
+      id: userId,
+      username,
+      gender: null,
+      country: null,
+      pfp: null,
+      is_reported: false,
+      friends: [],
+      blocked_users: [],
+      created_at: new Date().toISOString()
+    };
 
-    if (error) throw error;
-    return data;
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('users')
+        .insert(userData)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } else {
+      memoryUsers.set(userId, userData);
+      return userData;
+    }
   }
 
   async getUser(userId) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) throw error;
-    return data;
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (error) throw error;
+      return data;
+    } else {
+      const user = memoryUsers.get(userId);
+      if (!user) throw new Error('User not found');
+      return user;
+    }
   }
 
   async updateUser(userId, updates) {
-    const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } else {
+      const user = memoryUsers.get(userId);
+      if (!user) throw new Error('User not found');
+      const updatedUser = { ...user, ...updates };
+      memoryUsers.set(userId, updatedUser);
+      return updatedUser;
+    }
   }
 
   async reportUser(userId) {
