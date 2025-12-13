@@ -2,7 +2,10 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+
+const userRoutes = require('./routes/userRoutes');
+const { router: chatRoutes, queue } = require('./routes/chatRoutes');
+const socketService = require('./services/socketService');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,152 +18,19 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 
-const queue = [];
-const activeChats = new Map();
-const userSockets = new Map();
-const users = new Map(); // Store user data: userId -> {userId, username}
+// Routes
+app.use('/api', userRoutes);
+app.use('/api', chatRoutes);
 
-const adjectives = ['Shearing', 'Dancing', 'Flying', 'Singing', 'Jumping', 'Glowing', 'Sparkling', 'Whispering', 'Laughing', 'Dreaming', 'Floating', 'Spinning', 'Bouncing', 'Twinkling', 'Giggling'];
-const nouns = ['Ramen', 'Pizza', 'Taco', 'Sushi', 'Waffle', 'Muffin', 'Cookie', 'Donut', 'Bagel', 'Pancake', 'Noodle', 'Pretzel', 'Croissant', 'Burrito', 'Sandwich'];
-
-// FIXED: Changed from POST to GET
-app.get('/api/generate-user-id', (req, res) => {
-  const userId = uuidv4();
-  const username = `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
-  const userData = { userId, username };
-  users.set(userId, userData);
-  res.json(userData);
-});
-
-app.post('/api/join-queue', (req, res) => {
-  const { userId } = req.body;
-  const userData = users.get(userId);
-  const socket = userSockets.get(userId);
-  
-  if (userData && socket && socket.connected && !queue.find(u => u.userId === userId)) {
-    queue.push(userData);
-    setTimeout(tryMatchUsers, 500);
-  }
-  const position = queue.findIndex(u => u.userId === userId) + 1;
-  res.json({ ...userData, queuePosition: position });
-});
-
-app.post('/api/leave-queue', (req, res) => {
-  const { userId } = req.body;
-  const index = queue.findIndex(u => u.userId === userId);
-  if (index !== -1) queue.splice(index, 1);
-  res.json({ success: true });
-});
-
-app.get('/api/queue-status/:userId', (req, res) => {
-  const { userId } = req.params;
-  const index = queue.findIndex(u => u.userId === userId);
-  res.json({ inQueue: index !== -1, queuePosition: index + 1 });
-});
-
-function tryMatchUsers() {
-  while (queue.length >= 2) {
-    const user1 = queue[0];
-    const user2 = queue[1];
-    const socket1 = userSockets.get(user1.userId);
-    const socket2 = userSockets.get(user2.userId);
-
-    if (!socket1?.connected || !socket2?.connected) {
-      if (!socket1?.connected) queue.shift();
-      if (queue.length > 1 && !socket2?.connected) queue.splice(1, 1);
-      continue;
-    }
-
-    queue.splice(0, 2);
-    const chatId = uuidv4();
-    activeChats.set(chatId, { users: [user1, user2], messages: [] });
-
-    socket1.emit('chat-paired', { chatId, users: [user1, user2] });
-    socket2.emit('chat-paired', { chatId, users: [user1, user2] });
-  }
-}
-
+// Socket handling
 io.on('connection', (socket) => {
-  socket.on('register-user', ({ userId }) => {
-    userSockets.set(userId, socket);
-    console.log(`User registered: ${userId} -> ${socket.id}`);
-    socket.emit('registration-confirmed', { userId });
-  });
-
-  socket.on('join-chat', ({ chatId }) => {
-    socket.join(chatId);
-  });
-
-  socket.on('send-message', ({ chatId, message, userId, username, replyTo }) => {
-    const messageData = {
-      id: uuidv4(),
-      chatId,
-      message,
-      userId,
-      username,
-      timestamp: Date.now(),
-      replyTo: replyTo || null,
-      reactions: {}
-    };
-    io.to(chatId).emit('new-message', messageData);
-  });
-
-  socket.on('add-reaction', ({ chatId, messageId, emoji, userId }) => {
-    io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
-  });
-
-  socket.on('leave-chat', ({ chatId, userId }) => {
-    // Find the chat and notify the partner
-    const chatData = activeChats.get(chatId);
-    if (chatData) {
-      const partner = chatData.users.find(u => u.userId !== userId);
-      if (partner) {
-        const partnerSocket = userSockets.get(partner.userId);
-        if (partnerSocket && partnerSocket.connected) {
-          partnerSocket.emit('partner-disconnected');
-          // Put partner back in queue
-          if (!queue.find(u => u.userId === partner.userId)) {
-            queue.push(partner);
-          }
-        }
-      }
-      // Remove the chat
-      activeChats.delete(chatId);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    for (const [userId, sock] of userSockets.entries()) {
-      if (sock === socket) {
-        // Find if this user was in an active chat
-        for (const [chatId, chatData] of activeChats.entries()) {
-          const userInChat = chatData.users.find(u => u.userId === userId);
-          if (userInChat) {
-            // Find the partner
-            const partner = chatData.users.find(u => u.userId !== userId);
-            if (partner) {
-              const partnerSocket = userSockets.get(partner.userId);
-              if (partnerSocket && partnerSocket.connected) {
-                // Notify partner that user disconnected
-                partnerSocket.emit('partner-disconnected');
-              }
-            }
-            // Remove the chat
-            activeChats.delete(chatId);
-            break;
-          }
-        }
-        
-        userSockets.delete(userId);
-        users.delete(userId);
-        const index = queue.findIndex(u => u.userId === userId);
-        if (index !== -1) queue.splice(index, 1);
-        console.log(`User disconnected and removed: ${userId}`);
-        break;
-      }
-    }
-  });
+  socketService.handleConnection(io, socket, queue);
 });
+
+// Match users every 500ms
+setInterval(() => {
+  socketService.tryMatchUsers(queue);
+}, 500);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
