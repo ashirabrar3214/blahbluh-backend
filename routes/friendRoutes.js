@@ -3,12 +3,17 @@ const friendService = require('../services/friendService');
 const router = express.Router();
 
 router.post('/friend-request', async (req, res) => {
+  console.log('🔵 Friend request received:', req.body);
   try {
     const { fromUserId, toUserId } = req.body;
+    console.log('📤 Sending friend request from:', fromUserId, 'to:', toUserId);
+    
     const result = await friendService.sendFriendRequest(fromUserId, toUserId);
+    console.log('✅ Friend request result:', result);
+    
     res.json(result);
   } catch (error) {
-    console.error('Friend request route error:', error);
+    console.error('❌ Friend request route error:', error);
     res.json({ success: false, message: 'Service unavailable' });
   }
 });
@@ -24,11 +29,13 @@ router.post('/accept-friend', async (req, res) => {
 });
 
 router.get('/friend-requests/:userId', async (req, res) => {
+  console.log('📜 Getting friend requests for user:', req.params.userId);
   try {
     const requests = await friendService.getFriendRequests(req.params.userId);
+    console.log('📊 Friend requests found:', requests.length, 'requests');
     res.json(requests);
   } catch (error) {
-    console.error('Friend requests error:', error);
+    console.error('❌ Friend requests error:', error);
     res.json([]); // Return empty array instead of 500 error
   }
 });

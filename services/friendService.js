@@ -2,9 +2,11 @@ const supabase = require('../config/supabase');
 
 class FriendService {
   async sendFriendRequest(fromUserId, toUserId) {
+    console.log('🔍 Checking existing friend request between:', fromUserId, 'and', toUserId);
+    
     try {
       // Check for existing request
-      const { data: existing } = await supabase
+      const { data: existing, error: checkError } = await supabase
         .from('friend_requests')
         .select('id')
         .eq('from_user_id', fromUserId)
@@ -12,28 +14,39 @@ class FriendService {
         .eq('status', 'pending')
         .single();
 
+      console.log('📄 Existing request check result:', { existing, checkError });
+
       if (existing) {
+        console.log('⚠️ Friend request already exists');
         return { success: false, message: 'Friend request already sent' };
       }
 
+      console.log('💾 Inserting new friend request into database');
+      const insertData = {
+        from_user_id: fromUserId,
+        to_user_id: toUserId,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      };
+      console.log('📝 Insert data:', insertData);
+
       const { data, error } = await supabase
         .from('friend_requests')
-        .insert({
-          from_user_id: fromUserId,
-          to_user_id: toUserId,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        })
+        .insert(insertData)
         .select()
         .single();
 
+      console.log('📊 Insert result:', { data, error });
+
       if (error) {
-        console.error('Supabase error:', error);
+        console.error('❌ Supabase insert error:', error);
         return { success: false, message: 'Database not available' };
       }
+      
+      console.log('✅ Friend request created successfully:', data);
       return { success: true, data };
     } catch (error) {
-      console.error('Friend request error:', error);
+      console.error('❌ Friend request service error:', error);
       return { success: false, message: 'Service unavailable' };
     }
   }
