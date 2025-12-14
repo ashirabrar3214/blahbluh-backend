@@ -135,6 +135,28 @@ class FriendService {
     if (error) throw error;
     return data.length > 0;
   }
+
+  async getFriendChats(userId) {
+    console.log('🔍 Getting friend chats for:', userId);
+    try {
+      // For now, return empty array since we don't have chat functionality yet
+      return [];
+    } catch (error) {
+      console.error('❌ Friend chats service error:', error);
+      return [];
+    }
+  }
+
+  async getChatMessages(chatId) {
+    console.log('🔍 Getting messages for chat:', chatId);
+    try {
+      // For now, return empty array since we don't have chat messages yet
+      return [];
+    } catch (error) {
+      console.error('❌ Chat messages service error:', error);
+      return [];
+    }
+  }
 }
 
 module.exports = new FriendService();

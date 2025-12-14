@@ -59,4 +59,28 @@ router.post('/block', async (req, res) => {
   }
 });
 
+// Friend chat endpoints
+router.get('/friend-chats/:userId', async (req, res) => {
+  console.log('📱 Getting friend chats for user:', req.params.userId);
+  try {
+    const chats = await friendService.getFriendChats(req.params.userId);
+    console.log('💬 Friend chats found:', chats.length);
+    res.json(chats);
+  } catch (error) {
+    console.error('❌ Friend chats error:', error);
+    res.json([]);
+  }
+});
+
+router.get('/friend-chat-messages/:chatId', async (req, res) => {
+  console.log('📨 Getting messages for chat:', req.params.chatId);
+  try {
+    const messages = await friendService.getChatMessages(req.params.chatId);
+    res.json(messages);
+  } catch (error) {
+    console.error('❌ Chat messages error:', error);
+    res.json([]);
+  }
+});
+
 module.exports = router;
