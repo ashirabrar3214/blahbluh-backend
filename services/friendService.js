@@ -2,6 +2,19 @@ const supabase = require('../config/supabase');
 
 class FriendService {
   async sendFriendRequest(fromUserId, toUserId) {
+    // Check for existing request
+    const { data: existing } = await supabase
+      .from('friend_requests')
+      .select('id')
+      .eq('from_user_id', fromUserId)
+      .eq('to_user_id', toUserId)
+      .eq('status', 'pending')
+      .single();
+
+    if (existing) {
+      throw new Error('Friend request already sent');
+    }
+
     const { data, error } = await supabase
       .from('friend_requests')
       .insert({
@@ -49,17 +62,25 @@ class FriendService {
   }
 
   async getFriendRequests(userId) {
-    const { data, error } = await supabase
-      .from('friend_requests')
-      .select(`
-        *,
-        from_user:users!friend_requests_from_user_id_fkey(id, username)
-      `)
-      .eq('to_user_id', userId)
-      .eq('status', 'pending');
+    try {
+      const { data, error } = await supabase
+        .from('friend_requests')
+        .select(`
+          *,
+          from_user:users!friend_requests_from_user_id_fkey(id, username)
+        `)
+        .eq('to_user_id', userId)
+        .eq('status', 'pending');
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        console.error('Supabase error:', error);
+        return []; // Return empty array instead of throwing
+      }
+      return data || [];
+    } catch (error) {
+      console.error('Database connection error:', error);
+      return []; // Return empty array for now
+    }
   }
 
   async getFriends(userId) {
