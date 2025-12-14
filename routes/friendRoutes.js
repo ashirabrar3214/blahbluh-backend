@@ -5,10 +5,11 @@ const router = express.Router();
 router.post('/friend-request', async (req, res) => {
   try {
     const { fromUserId, toUserId } = req.body;
-    const request = await friendService.sendFriendRequest(fromUserId, toUserId);
-    res.json(request);
+    const result = await friendService.sendFriendRequest(fromUserId, toUserId);
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Friend request route error:', error);
+    res.json({ success: false, message: 'Service unavailable' });
   }
 });
 
