@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const friendService = require('./friendService');
 
 class SocketService {
   constructor() {
@@ -80,7 +81,7 @@ class SocketService {
     });
   }
 
-  tryMatchUsers(queue) {
+  async tryMatchUsers(queue) {
     while (queue.length >= 2) {
       const user1 = queue[0];
       const user2 = queue[1];
@@ -91,6 +92,18 @@ class SocketService {
         if (!socket1?.connected) queue.shift();
         if (queue.length > 1 && !socket2?.connected) queue.splice(1, 1);
         continue;
+      }
+
+      // Check if users have blocked each other
+      try {
+        const isBlocked = await friendService.isBlocked(user1.id, user2.id);
+        if (isBlocked) {
+          // Skip this pairing, remove user2 and try again
+          queue.splice(1, 1);
+          continue;
+        }
+      } catch (error) {
+        console.error('Error checking blocked users:', error);
       }
 
       queue.splice(0, 2);

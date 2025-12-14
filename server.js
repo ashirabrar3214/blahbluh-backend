@@ -5,6 +5,7 @@ const cors = require('cors');
 
 const userRoutes = require('./routes/userRoutes');
 const { router: chatRoutes, queue } = require('./routes/chatRoutes');
+const friendRoutes = require('./routes/friendRoutes');
 const socketService = require('./services/socketService');
 
 const app = express();
@@ -21,6 +22,7 @@ app.use(express.json());
 // Routes
 app.use('/api', userRoutes);
 app.use('/api', chatRoutes);
+app.use('/api', friendRoutes);
 
 // Socket handling
 io.on('connection', (socket) => {
@@ -28,8 +30,8 @@ io.on('connection', (socket) => {
 });
 
 // Match users every 500ms
-setInterval(() => {
-  socketService.tryMatchUsers(queue);
+setInterval(async () => {
+  await socketService.tryMatchUsers(queue);
 }, 500);
 
 const PORT = process.env.PORT || 3000;
