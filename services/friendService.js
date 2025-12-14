@@ -52,6 +52,8 @@ class FriendService {
   }
 
   async acceptFriendRequest(requestId, userId) {
+    console.log('🔍 Accepting friend request:', requestId, 'for user:', userId);
+    
     const { data: request, error: fetchError } = await supabase
       .from('friend_requests')
       .select('*')
@@ -59,15 +61,22 @@ class FriendService {
       .eq('to_user_id', userId)
       .single();
 
-    if (fetchError) throw fetchError;
+    console.log('📄 Friend request data:', { request, fetchError });
+
+    if (fetchError) {
+      console.error('❌ Error fetching friend request:', fetchError);
+      throw fetchError;
+    }
 
     // Update request status
+    console.log('🔄 Updating request status to accepted');
     await supabase
       .from('friend_requests')
       .update({ status: 'accepted' })
       .eq('id', requestId);
 
     // Add to friends table
+    console.log('👥 Adding users to friends table');
     const { data, error } = await supabase
       .from('friends')
       .insert([
@@ -75,8 +84,13 @@ class FriendService {
         { user_id: request.to_user_id, friend_id: request.from_user_id }
       ]);
 
-    if (error) throw error;
-    return data;
+    if (error) {
+      console.error('❌ Error adding friends:', error);
+      throw error;
+    }
+    
+    console.log('✅ Friend request accepted successfully');
+    return request; // Return the original request data for notifications
   }
 
   async getFriendRequests(userId) {

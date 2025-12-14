@@ -19,11 +19,26 @@ router.post('/friend-request', async (req, res) => {
 });
 
 router.post('/accept-friend', async (req, res) => {
+  console.log('✅ Accepting friend request:', req.body);
   try {
     const { requestId, userId } = req.body;
-    await friendService.acceptFriendRequest(requestId, userId);
+    const acceptedRequest = await friendService.acceptFriendRequest(requestId, userId);
+    
+    // Get the original sender's info for notification
+    if (acceptedRequest && acceptedRequest.from_user_id) {
+      const senderSocketId = global.connectedUsers?.get(acceptedRequest.from_user_id);
+      if (senderSocketId && global.io) {
+        console.log('🔔 Sending friend request accepted notification to:', acceptedRequest.from_user_id);
+        global.io.to(senderSocketId).emit('friend-request-accepted', {
+          userId: userId,
+          message: 'Your friend request was accepted!'
+        });
+      }
+    }
+    
     res.json({ success: true });
   } catch (error) {
+    console.error('❌ Accept friend error:', error);
     res.status(500).json({ error: error.message });
   }
 });
