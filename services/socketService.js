@@ -70,30 +70,47 @@ class SocketService {
           const [, userA, userB] = chatId.split('_');
           const receiverId = userA === userId ? userB : userA;
           
-          const { error } = await supabase
+          const { data: savedMessage, error } = await supabase
             .from('friend_messages')
             .insert({
               chat_id: chatId,
               sender_id: userId,
               receiver_id: receiverId,
               message: message
-            });
+            })
+            .select()
+            .single();
             
           if (error) throw error;
+          
+          // Create message data with database ID
+          const messageData = {
+            id: savedMessage.id,
+            chatId,
+            message,
+            userId,
+            username,
+            timestamp: savedMessage.created_at,
+            replyTo
+          };
+          
+          // Send to chat room AND emit special friend message event
+          io.to(chatId).emit('new-message', messageData);
+          io.to(chatId).emit('friend-message-received', messageData);
+        } else {
+          // Regular random chat message
+          const messageData = {
+            id: Date.now(),
+            chatId,
+            message,
+            userId,
+            username,
+            timestamp: new Date().toISOString(),
+            replyTo
+          };
+          
+          io.to(chatId).emit('new-message', messageData);
         }
-        
-        // Send message to room
-        const messageData = {
-          id: Date.now(),
-          chatId,
-          message,
-          userId,
-          username,
-          timestamp: new Date().toISOString(),
-          replyTo
-        };
-        
-        io.to(chatId).emit('new-message', messageData);
       } catch (error) {
         console.error('Error storing friend message:', error);
       }
