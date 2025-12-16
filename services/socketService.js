@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const friendService = require('./friendService');
+const supabase = require('../config/supabase');
 
 class SocketService {
   constructor() {
@@ -21,12 +22,13 @@ class SocketService {
     // Fetch unread messages on connect
     socket.on('fetch-unread-messages', async ({ userId }) => {
       try {
-        const { supabase } = require('../config/supabase');
-        const { data: friends } = await supabase
+        const { data: friends, error } = await supabase
           .from('friends')
           .select('friend_id')
           .eq('user_id', userId);
           
+        if (error) throw error;
+        
         friends?.forEach(friend => {
           const chatId = `friend_${[userId, friend.friend_id].sort().join('_')}`;
           socket.join(chatId);
@@ -38,14 +40,8 @@ class SocketService {
 
     // Queue heartbeat
     socket.on('queue-heartbeat', ({ userId }) => {
-      const userInQueue = queue.some(user => user.id === userId);
-      const currentSocketId = this.userSocketMap.get(userId);
-      
-      if (!userInQueue || currentSocketId !== socket.id) {
-        socket.emit('queue-heartbeat-response', { inQueue: false });
-      } else {
-        socket.emit('queue-heartbeat-response', { inQueue: true });
-      }
+      const userInQueue = queue.some(user => user.userId === userId);
+      socket.emit('queue-heartbeat-response', { inQueue: userInQueue });
     });
 
     // Atomic skip partner
@@ -53,22 +49,28 @@ class SocketService {
       socket.leave(chatId);
       io.to(chatId).emit('partner-disconnected');
       
-      const result = await this.joinQueue(userId, socket.id, queue);
-      socket.emit('queue-joined', result);
+      try {
+        const result = await this.joinQueue(userId, socket.id, queue);
+        socket.emit('queue-joined', result);
+      } catch (error) {
+        console.error('Error re-joining queue:', error);
+      }
     });
 
     socket.on('join-chat', ({ chatId }) => {
       socket.join(chatId);
     });
 
-    socket.on('send-message', async ({ chatId, message, userId, username, replyTo }) => {
-      if (chatId.startsWith('friend_')) {
-        try {
+    socket.on('send-message', async (data) => {
+      try {
+        const { chatId, message, userId, username, replyTo } = data;
+        
+        // Store friend messages in database
+        if (chatId.startsWith('friend_')) {
           const [, userA, userB] = chatId.split('_');
           const receiverId = userA === userId ? userB : userA;
           
-          const { supabase } = require('../config/supabase');
-          await supabase
+          const { error } = await supabase
             .from('friend_messages')
             .insert({
               chat_id: chatId,
@@ -76,22 +78,25 @@ class SocketService {
               receiver_id: receiverId,
               message: message
             });
-        } catch (error) {
-          console.error('Error storing friend message:', error);
+            
+          if (error) throw error;
         }
+        
+        // Send message to room
+        const messageData = {
+          id: Date.now(),
+          chatId,
+          message,
+          userId,
+          username,
+          timestamp: new Date().toISOString(),
+          replyTo
+        };
+        
+        io.to(chatId).emit('new-message', messageData);
+      } catch (error) {
+        console.error('Error storing friend message:', error);
       }
-      
-      const messageData = {
-        id: Date.now(),
-        chatId,
-        message,
-        userId,
-        username,
-        timestamp: new Date().toISOString(),
-        replyTo: replyTo || null,
-        reactions: {}
-      };
-      io.to(chatId).emit('new-message', messageData);
     });
 
     socket.on('add-reaction', ({ chatId, messageId, emoji, userId }) => {
@@ -139,7 +144,7 @@ class SocketService {
           }
           
           this.userSockets.delete(userId);
-          const index = queue.findIndex(u => u.id === userId);
+          const index = queue.findIndex(u => u.userId === userId);
           if (index !== -1) queue.splice(index, 1);
           console.log(`User disconnected and removed: ${userId}`);
           break;
@@ -149,13 +154,13 @@ class SocketService {
   }
 
   async joinQueue(userId, socketId, queue) {
-    const existingIndex = queue.findIndex(user => user.id === userId);
+    const existingIndex = queue.findIndex(user => user.userId === userId);
     if (existingIndex !== -1) {
       queue.splice(existingIndex, 1);
     }
     
     this.userSocketMap.set(userId, socketId);
-    queue.push({ id: userId, socketId, timestamp: Date.now() });
+    queue.push({ userId: userId, socketId, timestamp: Date.now() });
     
     return {
       queuePosition: queue.length,
@@ -167,8 +172,8 @@ class SocketService {
     while (queue.length >= 2) {
       const user1 = queue[0];
       const user2 = queue[1];
-      const socket1 = this.userSockets.get(user1.id);
-      const socket2 = this.userSockets.get(user2.id);
+      const socket1 = this.userSockets.get(user1.userId);
+      const socket2 = this.userSockets.get(user2.userId);
 
       if (!socket1?.connected || !socket2?.connected) {
         if (!socket1?.connected) queue.shift();
@@ -178,7 +183,7 @@ class SocketService {
 
       // Check if users have blocked each other
       try {
-        const isBlocked = await friendService.isBlocked(user1.id, user2.id);
+        const isBlocked = await friendService.isBlocked(user1.userId, user2.userId);
         if (isBlocked) {
           // Skip this pairing, remove user2 and try again
           queue.splice(1, 1);

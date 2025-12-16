@@ -1,5 +1,6 @@
 const express = require('express');
 const friendService = require('../services/friendService');
+const supabase = require('../config/supabase');
 const router = express.Router();
 
 router.post('/friend-request', async (req, res) => {
@@ -90,8 +91,17 @@ router.get('/friend-chats/:userId', async (req, res) => {
 router.get('/friend-chat-messages/:chatId', async (req, res) => {
   console.log('📨 Getting messages for chat:', req.params.chatId);
   try {
-    const messages = await friendService.getChatMessages(req.params.chatId);
-    res.json(messages);
+    const { chatId } = req.params;
+    
+    const { data: messages, error } = await supabase
+      .from('friend_messages')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: true })
+      .limit(50);
+      
+    if (error) throw error;
+    res.json(messages || []);
   } catch (error) {
     console.error('❌ Chat messages error:', error);
     res.json([]);
@@ -100,43 +110,43 @@ router.get('/friend-chat-messages/:chatId', async (req, res) => {
 
 // Get unread message count
 router.get('/unread-count/:userId/:friendId', async (req, res) => {
-  const { userId, friendId } = req.params;
-  const chatId = `friend_${[userId, friendId].sort().join('_')}`;
-  
   try {
-    const { supabase } = require('../config/supabase');
-    const { count } = await supabase
+    const { userId, friendId } = req.params;
+    const chatId = `friend_${[userId, friendId].sort().join('_')}`;
+    
+    const { count, error } = await supabase
       .from('friend_messages')
       .select('*', { count: 'exact', head: true })
       .eq('chat_id', chatId)
       .eq('receiver_id', userId)
       .is('read_at', null);
       
+    if (error) throw error;
     res.json(count || 0);
   } catch (error) {
     console.error('❌ Unread count error:', error);
-    res.json(0);
+    res.status(500).json({ error: 'Failed to get unread count' });
   }
 });
 
 // Mark messages as read
 router.post('/mark-read', async (req, res) => {
-  const { userId, friendId } = req.body;
-  const chatId = `friend_${[userId, friendId].sort().join('_')}`;
-  
   try {
-    const { supabase } = require('../config/supabase');
-    await supabase
+    const { userId, friendId } = req.body;
+    const chatId = `friend_${[userId, friendId].sort().join('_')}`;
+    
+    const { error } = await supabase
       .from('friend_messages')
       .update({ read_at: new Date().toISOString() })
       .eq('chat_id', chatId)
       .eq('receiver_id', userId)
       .is('read_at', null);
       
+    if (error) throw error;
     res.json({ success: true });
   } catch (error) {
     console.error('❌ Mark read error:', error);
-    res.json({ success: false });
+    res.status(500).json({ error: 'Failed to mark as read' });
   }
 });
 

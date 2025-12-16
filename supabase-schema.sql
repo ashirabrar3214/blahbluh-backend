@@ -46,11 +46,28 @@ CREATE TABLE blocked_users (
   UNIQUE(user_id, blocked_user_id)
 );
 
+-- Friend messages table
+CREATE TABLE friend_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id text NOT NULL,
+  sender_id text NOT NULL,
+  receiver_id text NOT NULL,
+  message text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  read_at timestamptz NULL
+);
+
+-- Add indexes for performance
+CREATE INDEX idx_friend_messages_chat_id ON friend_messages(chat_id);
+CREATE INDEX idx_friend_messages_receiver_unread ON friend_messages(receiver_id, read_at);
+
 -- RLS policies for new tables
 ALTER TABLE friend_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE friends ENABLE ROW LEVEL SECURITY;
 ALTER TABLE blocked_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE friend_messages ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow all operations" ON friend_requests FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON friends FOR ALL USING (true);
 CREATE POLICY "Allow all operations" ON blocked_users FOR ALL USING (true);
+CREATE POLICY "Allow all operations" ON friend_messages FOR ALL USING (true);
