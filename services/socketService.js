@@ -5,27 +5,89 @@ class SocketService {
   constructor() {
     this.userSockets = new Map();
     this.activeChats = new Map();
+    this.userSessions = new Map(); // userId -> socketId
+    this.userSocketMap = new Map(); // userId -> socketId for queue
   }
 
   handleConnection(io, socket, queue) {
     socket.on('register-user', ({ userId }) => {
       this.userSockets.set(userId, socket);
+      this.userSessions.set(userId, socket.id);
+      socket.userId = userId;
       console.log(`User registered: ${userId} -> ${socket.id}`);
       socket.emit('registration-confirmed', { userId });
+    });
+
+    // Fetch unread messages on connect
+    socket.on('fetch-unread-messages', async ({ userId }) => {
+      try {
+        const { supabase } = require('../config/supabase');
+        const { data: friends } = await supabase
+          .from('friends')
+          .select('friend_id')
+          .eq('user_id', userId);
+          
+        friends?.forEach(friend => {
+          const chatId = `friend_${[userId, friend.friend_id].sort().join('_')}`;
+          socket.join(chatId);
+        });
+      } catch (error) {
+        console.error('Error fetching unread messages:', error);
+      }
+    });
+
+    // Queue heartbeat
+    socket.on('queue-heartbeat', ({ userId }) => {
+      const userInQueue = queue.some(user => user.id === userId);
+      const currentSocketId = this.userSocketMap.get(userId);
+      
+      if (!userInQueue || currentSocketId !== socket.id) {
+        socket.emit('queue-heartbeat-response', { inQueue: false });
+      } else {
+        socket.emit('queue-heartbeat-response', { inQueue: true });
+      }
+    });
+
+    // Atomic skip partner
+    socket.on('skip-partner', async ({ chatId, userId }) => {
+      socket.leave(chatId);
+      io.to(chatId).emit('partner-disconnected');
+      
+      const result = await this.joinQueue(userId, socket.id, queue);
+      socket.emit('queue-joined', result);
     });
 
     socket.on('join-chat', ({ chatId }) => {
       socket.join(chatId);
     });
 
-    socket.on('send-message', ({ chatId, message, userId, username, replyTo }) => {
+    socket.on('send-message', async ({ chatId, message, userId, username, replyTo }) => {
+      if (chatId.startsWith('friend_')) {
+        try {
+          const [, userA, userB] = chatId.split('_');
+          const receiverId = userA === userId ? userB : userA;
+          
+          const { supabase } = require('../config/supabase');
+          await supabase
+            .from('friend_messages')
+            .insert({
+              chat_id: chatId,
+              sender_id: userId,
+              receiver_id: receiverId,
+              message: message
+            });
+        } catch (error) {
+          console.error('Error storing friend message:', error);
+        }
+      }
+      
       const messageData = {
-        id: uuidv4(),
+        id: Date.now(),
         chatId,
         message,
         userId,
         username,
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
         replyTo: replyTo || null,
         reactions: {}
       };
@@ -54,6 +116,11 @@ class SocketService {
     });
 
     socket.on('disconnect', () => {
+      if (socket.userId) {
+        this.userSessions.delete(socket.userId);
+        this.userSocketMap.delete(socket.userId);
+      }
+      
       for (const [userId, sock] of this.userSockets.entries()) {
         if (sock === socket) {
           for (const [chatId, chatData] of this.activeChats.entries()) {
@@ -79,6 +146,21 @@ class SocketService {
         }
       }
     });
+  }
+
+  async joinQueue(userId, socketId, queue) {
+    const existingIndex = queue.findIndex(user => user.id === userId);
+    if (existingIndex !== -1) {
+      queue.splice(existingIndex, 1);
+    }
+    
+    this.userSocketMap.set(userId, socketId);
+    queue.push({ id: userId, socketId, timestamp: Date.now() });
+    
+    return {
+      queuePosition: queue.length,
+      success: true
+    };
   }
 
   async tryMatchUsers(queue) {

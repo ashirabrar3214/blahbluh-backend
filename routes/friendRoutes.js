@@ -98,4 +98,46 @@ router.get('/friend-chat-messages/:chatId', async (req, res) => {
   }
 });
 
+// Get unread message count
+router.get('/unread-count/:userId/:friendId', async (req, res) => {
+  const { userId, friendId } = req.params;
+  const chatId = `friend_${[userId, friendId].sort().join('_')}`;
+  
+  try {
+    const { supabase } = require('../config/supabase');
+    const { count } = await supabase
+      .from('friend_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('chat_id', chatId)
+      .eq('receiver_id', userId)
+      .is('read_at', null);
+      
+    res.json(count || 0);
+  } catch (error) {
+    console.error('❌ Unread count error:', error);
+    res.json(0);
+  }
+});
+
+// Mark messages as read
+router.post('/mark-read', async (req, res) => {
+  const { userId, friendId } = req.body;
+  const chatId = `friend_${[userId, friendId].sort().join('_')}`;
+  
+  try {
+    const { supabase } = require('../config/supabase');
+    await supabase
+      .from('friend_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('chat_id', chatId)
+      .eq('receiver_id', userId)
+      .is('read_at', null);
+      
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Mark read error:', error);
+    res.json({ success: false });
+  }
+});
+
 module.exports = router;
