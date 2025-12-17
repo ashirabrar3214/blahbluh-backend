@@ -123,12 +123,12 @@ class SocketService {
     socket.on('leave-chat', ({ chatId, userId }) => {
       const chatData = this.activeChats.get(chatId);
       if (chatData) {
-        const partner = chatData.users.find(u => u.id !== userId);
+        const partner = chatData.users.find(u => u.userId !== userId);
         if (partner) {
-          const partnerSocket = this.userSockets.get(partner.id);
+          const partnerSocket = this.userSockets.get(partner.userId);
           if (partnerSocket && partnerSocket.connected) {
             partnerSocket.emit('partner-disconnected');
-            if (!queue.find(u => u.id === partner.id)) {
+            if (!queue.find(u => u.userId === partner.userId)) {
               queue.push(partner);
             }
           }
@@ -138,35 +138,41 @@ class SocketService {
     });
 
     socket.on('disconnect', () => {
+      // 1. Remove from userSockets/Sessions
       if (socket.userId) {
         this.userSessions.delete(socket.userId);
         this.userSocketMap.delete(socket.userId);
+        this.userSockets.delete(socket.userId); // Ensure we clean this up
       }
-      
-      for (const [userId, sock] of this.userSockets.entries()) {
-        if (sock === socket) {
-          for (const [chatId, chatData] of this.activeChats.entries()) {
-            const userInChat = chatData.users.find(u => u.id === userId);
-            if (userInChat) {
-              const partner = chatData.users.find(u => u.id !== userId);
-              if (partner) {
-                const partnerSocket = this.userSockets.get(partner.id);
-                if (partnerSocket && partnerSocket.connected) {
-                  partnerSocket.emit('partner-disconnected');
-                }
-              }
-              this.activeChats.delete(chatId);
-              break;
+
+      // 2. Find and clean up active chats
+      for (const [chatId, chatData] of this.activeChats.entries()) {
+        // FIX: Use .userId instead of .id
+        const userInChat = chatData.users.find(u => u.userId === socket.userId);
+        
+        if (userInChat) {
+          // FIX: Use .userId to find partner
+          const partner = chatData.users.find(u => u.userId !== socket.userId);
+          
+          if (partner) {
+            const partnerSocket = this.userSockets.get(partner.userId);
+            if (partnerSocket && partnerSocket.connected) {
+              // Notify partner
+              partnerSocket.emit('partner-disconnected');
             }
           }
-          
-          this.userSockets.delete(userId);
-          const index = queue.findIndex(u => u.userId === userId);
-          if (index !== -1) queue.splice(index, 1);
-          console.log(`User disconnected and removed: ${userId}`);
-          break;
+          this.activeChats.delete(chatId);
+          break; 
         }
       }
+
+      // 3. Remove from queue if they were waiting
+      const index = queue.findIndex(u => u.userId === socket.userId);
+      if (index !== -1) {
+        queue.splice(index, 1);
+      }
+      
+      console.log(`User disconnected: ${socket.userId}`);
     });
   }
 
