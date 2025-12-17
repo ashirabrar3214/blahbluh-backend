@@ -46,8 +46,20 @@ class SocketService {
 
     // Atomic skip partner
     socket.on('skip-partner', async ({ chatId, userId }) => {
+      // Find and notify partner before leaving
+      const chatData = this.activeChats.get(chatId);
+      if (chatData) {
+        const partner = chatData.users.find(u => u.userId !== userId);
+        if (partner) {
+          const partnerSocket = this.userSockets.get(partner.userId);
+          if (partnerSocket && partnerSocket.connected) {
+            partnerSocket.emit('partner-disconnected');
+          }
+        }
+        this.activeChats.delete(chatId);
+      }
+      
       socket.leave(chatId);
-      io.to(chatId).emit('partner-disconnected');
       
       try {
         const result = await this.joinQueue(userId, socket.id, queue);
@@ -142,23 +154,30 @@ class SocketService {
       if (socket.userId) {
         this.userSessions.delete(socket.userId);
         this.userSocketMap.delete(socket.userId);
-        this.userSockets.delete(socket.userId); // Ensure we clean this up
+        this.userSockets.delete(socket.userId);
       }
 
       // 2. Find and clean up active chats
       for (const [chatId, chatData] of this.activeChats.entries()) {
-        // FIX: Use .userId instead of .id
         const userInChat = chatData.users.find(u => u.userId === socket.userId);
         
         if (userInChat) {
-          // FIX: Use .userId to find partner
           const partner = chatData.users.find(u => u.userId !== socket.userId);
           
           if (partner) {
             const partnerSocket = this.userSockets.get(partner.userId);
             if (partnerSocket && partnerSocket.connected) {
-              // Notify partner
+              // Notify partner and auto-requeue them
               partnerSocket.emit('partner-disconnected');
+              
+              // Auto-requeue the partner for random chats only
+              if (!chatId.startsWith('friend_')) {
+                const existingIndex = queue.findIndex(u => u.userId === partner.userId);
+                if (existingIndex === -1) {
+                  queue.push({ userId: partner.userId, socketId: partnerSocket.id, timestamp: Date.now() });
+                  console.log(`🔄 Auto-requeued partner ${partner.userId} after disconnect`);
+                }
+              }
             }
           }
           this.activeChats.delete(chatId);
