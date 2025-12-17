@@ -119,7 +119,12 @@ class SocketService {
           
           // Send to chat room AND emit special friend message event
           io.to(chatId).emit('new-message', messageData);
-          io.to(chatId).emit('friend-message-received', messageData);
+          
+          // Only notify receiver of new message for badge count
+          const receiverSocket = this.userSockets.get(receiverId);
+          if (receiverSocket && receiverSocket.connected) {
+            receiverSocket.emit('friend-message-received', messageData);
+          }
         } else {
           // Regular random chat message
           const messageData = {
