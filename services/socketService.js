@@ -46,13 +46,22 @@ class SocketService {
 
     // Atomic skip partner
     socket.on('skip-partner', async ({ chatId, userId }) => {
+      console.log(`🔄 Skip partner request: chatId=${chatId}, userId=${userId}`);
+      
       // Find and notify partner before leaving
       const chatData = this.activeChats.get(chatId);
+      console.log(`📊 Chat data found:`, chatData ? 'YES' : 'NO');
+      
       if (chatData) {
         const partner = chatData.users.find(u => u.userId !== userId);
+        console.log(`👥 Partner found:`, partner ? `${partner.userId}` : 'NO');
+        
         if (partner) {
           const partnerSocket = this.userSockets.get(partner.userId);
+          console.log(`🔌 Partner socket:`, partnerSocket ? 'CONNECTED' : 'NOT FOUND');
+          
           if (partnerSocket && partnerSocket.connected) {
+            console.log(`📤 Emitting partner-disconnected to ${partner.userId}`);
             partnerSocket.emit('partner-disconnected');
           }
         }
@@ -71,6 +80,8 @@ class SocketService {
 
     socket.on('join-chat', ({ chatId }) => {
       socket.join(chatId);
+      socket.currentChatId = chatId;
+      console.log(`User ${socket.userId} joined chat ${chatId}`);
     });
 
     socket.on('send-message', async (data) => {
@@ -150,48 +161,43 @@ class SocketService {
     });
 
     socket.on('disconnect', () => {
-      // 1. Remove from userSockets/Sessions
-      if (socket.userId) {
-        this.userSessions.delete(socket.userId);
-        this.userSocketMap.delete(socket.userId);
-        this.userSockets.delete(socket.userId);
+      const userId = socket.userId;
+      const chatId = socket.currentChatId;
+      
+      if (userId) {
+        this.userSessions.delete(userId);
+        this.userSocketMap.delete(userId);
+        this.userSockets.delete(userId);
       }
 
-      // 2. Find and clean up active chats
-      for (const [chatId, chatData] of this.activeChats.entries()) {
-        const userInChat = chatData.users.find(u => u.userId === socket.userId);
-        
-        if (userInChat) {
-          const partner = chatData.users.find(u => u.userId !== socket.userId);
-          
+      if (chatId) {
+        const chatData = this.activeChats.get(chatId);
+        if (chatData) {
+          const partner = chatData.users.find(u => u.userId !== userId);
           if (partner) {
             const partnerSocket = this.userSockets.get(partner.userId);
             if (partnerSocket && partnerSocket.connected) {
-              // Notify partner and auto-requeue them
+              console.log(`📤 Notifying partner ${partner.userId} of disconnect`);
               partnerSocket.emit('partner-disconnected');
               
-              // Auto-requeue the partner for random chats only
               if (!chatId.startsWith('friend_')) {
                 const existingIndex = queue.findIndex(u => u.userId === partner.userId);
                 if (existingIndex === -1) {
                   queue.push({ userId: partner.userId, socketId: partnerSocket.id, timestamp: Date.now() });
-                  console.log(`🔄 Auto-requeued partner ${partner.userId} after disconnect`);
                 }
               }
             }
           }
           this.activeChats.delete(chatId);
-          break; 
         }
       }
 
-      // 3. Remove from queue if they were waiting
-      const index = queue.findIndex(u => u.userId === socket.userId);
+      const index = queue.findIndex(u => u.userId === userId);
       if (index !== -1) {
         queue.splice(index, 1);
       }
       
-      console.log(`User disconnected: ${socket.userId}`);
+      console.log(`User disconnected: ${userId}`);
     });
   }
 
@@ -237,7 +243,12 @@ class SocketService {
 
       queue.splice(0, 2);
       const chatId = uuidv4();
-      this.activeChats.set(chatId, { users: [user1, user2], messages: [] });
+      const chatData = { users: [user1, user2], messages: [] };
+      this.activeChats.set(chatId, chatData);
+      
+      console.log(`🎆 Chat created: ${chatId}`);
+      console.log(`👥 Users: ${user1.userId} & ${user2.userId}`);
+      console.log(`📊 Active chats count: ${this.activeChats.size}`);
 
       socket1.emit('chat-paired', { chatId, users: [user1, user2] });
       socket2.emit('chat-paired', { chatId, users: [user1, user2] });
