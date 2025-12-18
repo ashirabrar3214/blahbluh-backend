@@ -151,42 +151,44 @@ class SocketService {
       io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
     });
 
-    socket.on('leave-chat', ({ chatId, userId }) => {
-    const chatData = this.activeChats.get(chatId);
-    if (!chatData) return;
+    socket.on('leave-chat', async ({ chatId, userId }) => {
+  const chatData = this.activeChats.get(chatId);
+  if (!chatData) return;
 
-    const getId = (u) => u?.userId ?? u?.id;
+  const getId = (u) => u?.userId ?? u?.id;
 
-    const partner = chatData.users.find(u => getId(u) !== userId);
-    const partnerId = getId(partner);
+  const partner = chatData.users.find(u => getId(u) !== userId);
+  const partnerId = getId(partner);
 
-    if (partnerId) {
-      const partnerSocket = this.userSockets.get(partnerId);
-      if (partnerSocket?.connected) {
-        partnerSocket.leave(chatId);
-        partnerSocket.emit('partner-disconnected');
-      }
+  // notify + requeue partner
+  if (partnerId) {
+    const partnerSocket = this.userSockets.get(partnerId);
+    if (partnerSocket?.connected) {
+      partnerSocket.leave(chatId);
+      partnerSocket.emit('partner-disconnected');
 
-      // re-queue partner
-      if (!queue.some(u => (u.userId ?? u.id) === partnerId)) {
-        queue.push({ userId: partnerId, username: partner?.username });
+      try {
+        const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
+        partnerSocket.emit('queue-joined', result);
+      } catch (e) {
+        console.error('Error re-joining partner to queue:', e);
       }
     }
+  }
 
-    this.activeChats.delete(chatId);
-  });
+  socket.leave(chatId);
+  this.activeChats.delete(chatId);
+});
 
-
-    socket.on('disconnect', () => {
+socket.on('disconnect', async () => {
   const leavingId = socket.userId;
   if (!leavingId) return;
 
   this.userSessions.delete(leavingId);
   this.userSocketMap.delete(leavingId);
-  this.userSockets.delete(leavingId);
 
-  // remove from queue
-  const qIndex = queue.findIndex(u => (u.userId ?? u.id) === leavingId);
+  // remove from queue if present
+  const qIndex = queue.findIndex(u => u.userId === leavingId);
   if (qIndex !== -1) queue.splice(qIndex, 1);
 
   const getId = (u) => u?.userId ?? u?.id;
@@ -204,11 +206,13 @@ class SocketService {
       if (partnerSocket?.connected) {
         partnerSocket.leave(chatId);
         partnerSocket.emit('partner-disconnected');
-      }
 
-      // re-queue partner
-      if (!queue.some(u => (u.userId ?? u.id) === partnerId)) {
-        queue.push({ userId: partnerId, username: partner?.username });
+        try {
+          const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
+          partnerSocket.emit('queue-joined', result);
+        } catch (e) {
+          console.error('Error re-joining partner to queue:', e);
+        }
       }
     }
 
@@ -216,8 +220,17 @@ class SocketService {
     break;
   }
 
+  // finally remove socket mapping
+  for (const [userId, sock] of this.userSockets.entries()) {
+    if (sock === socket) {
+      this.userSockets.delete(userId);
+      break;
+    }
+  }
+
   console.log(`User disconnected and removed: ${leavingId}`);
 });
+
 
   }
 
