@@ -45,17 +45,48 @@ class SocketService {
     });
 
     // Atomic skip partner
-    socket.on('skip-partner', async ({ chatId, userId }) => {
-      socket.leave(chatId);
-      io.to(chatId).emit('partner-disconnected');
-      
-      try {
-        const result = await this.joinQueue(userId, socket.id, queue);
-        socket.emit('queue-joined', result);
-      } catch (error) {
-        console.error('Error re-joining queue:', error);
+    socket.on('skip-partner', ({ chatId, userId }) => {
+    const chatData = this.activeChats.get(chatId);
+    socket.leave(chatId);
+
+    const getId = (u) => u?.userId ?? u?.id;
+
+    if (chatData) {
+      const me = chatData.users.find(u => getId(u) === userId);
+      const partner = chatData.users.find(u => getId(u) !== userId);
+      const partnerId = getId(partner);
+
+      // notify partner + boot them from the room
+      if (partnerId) {
+        const partnerSocket = this.userSockets.get(partnerId);
+        if (partnerSocket?.connected) {
+          partnerSocket.leave(chatId);
+          partnerSocket.emit('partner-disconnected');
+        }
+
+        // requeue partner
+        if (!queue.some(u => (u.userId ?? u.id) === partnerId)) {
+          queue.push({ userId: partnerId, username: partner?.username });
+        }
       }
-    });
+
+      // requeue me
+      if (!queue.some(u => (u.userId ?? u.id) === userId)) {
+        queue.push({ userId, username: me?.username });
+      }
+
+      this.activeChats.delete(chatId);
+    } else {
+      // fallback: at least requeue me
+      if (!queue.some(u => (u.userId ?? u.id) === userId)) {
+        queue.push({ userId });
+      }
+    }
+
+    const position = queue.findIndex(u => u.userId === userId) + 1;
+    socket.emit('queue-joined', { success: true, queuePosition: position });
+  });
+
 
     socket.on('join-chat', ({ chatId }) => {
       socket.join(chatId);
@@ -121,53 +152,73 @@ class SocketService {
     });
 
     socket.on('leave-chat', ({ chatId, userId }) => {
-      const chatData = this.activeChats.get(chatId);
-      if (chatData) {
-        const partner = chatData.users.find(u => u.id !== userId);
-        if (partner) {
-          const partnerSocket = this.userSockets.get(partner.id);
-          if (partnerSocket && partnerSocket.connected) {
-            partnerSocket.emit('partner-disconnected');
-            if (!queue.find(u => u.id === partner.id)) {
-              queue.push(partner);
-            }
-          }
-        }
-        this.activeChats.delete(chatId);
+    const chatData = this.activeChats.get(chatId);
+    if (!chatData) return;
+
+    const getId = (u) => u?.userId ?? u?.id;
+
+    const partner = chatData.users.find(u => getId(u) !== userId);
+    const partnerId = getId(partner);
+
+    if (partnerId) {
+      const partnerSocket = this.userSockets.get(partnerId);
+      if (partnerSocket?.connected) {
+        partnerSocket.leave(chatId);
+        partnerSocket.emit('partner-disconnected');
       }
-    });
+
+      // re-queue partner
+      if (!queue.some(u => (u.userId ?? u.id) === partnerId)) {
+        queue.push({ userId: partnerId, username: partner?.username });
+      }
+    }
+
+    this.activeChats.delete(chatId);
+  });
+
 
     socket.on('disconnect', () => {
-      if (socket.userId) {
-        this.userSessions.delete(socket.userId);
-        this.userSocketMap.delete(socket.userId);
+  const leavingId = socket.userId;
+  if (!leavingId) return;
+
+  this.userSessions.delete(leavingId);
+  this.userSocketMap.delete(leavingId);
+  this.userSockets.delete(leavingId);
+
+  // remove from queue
+  const qIndex = queue.findIndex(u => (u.userId ?? u.id) === leavingId);
+  if (qIndex !== -1) queue.splice(qIndex, 1);
+
+  const getId = (u) => u?.userId ?? u?.id;
+
+  // if they were in an active chat, notify + requeue partner
+  for (const [chatId, chatData] of this.activeChats.entries()) {
+    const inChat = chatData.users.some(u => getId(u) === leavingId);
+    if (!inChat) continue;
+
+    const partner = chatData.users.find(u => getId(u) !== leavingId);
+    const partnerId = getId(partner);
+
+    if (partnerId) {
+      const partnerSocket = this.userSockets.get(partnerId);
+      if (partnerSocket?.connected) {
+        partnerSocket.leave(chatId);
+        partnerSocket.emit('partner-disconnected');
       }
-      
-      for (const [userId, sock] of this.userSockets.entries()) {
-        if (sock === socket) {
-          for (const [chatId, chatData] of this.activeChats.entries()) {
-            const userInChat = chatData.users.find(u => u.id === userId);
-            if (userInChat) {
-              const partner = chatData.users.find(u => u.id !== userId);
-              if (partner) {
-                const partnerSocket = this.userSockets.get(partner.id);
-                if (partnerSocket && partnerSocket.connected) {
-                  partnerSocket.emit('partner-disconnected');
-                }
-              }
-              this.activeChats.delete(chatId);
-              break;
-            }
-          }
-          
-          this.userSockets.delete(userId);
-          const index = queue.findIndex(u => u.userId === userId);
-          if (index !== -1) queue.splice(index, 1);
-          console.log(`User disconnected and removed: ${userId}`);
-          break;
-        }
+
+      // re-queue partner
+      if (!queue.some(u => (u.userId ?? u.id) === partnerId)) {
+        queue.push({ userId: partnerId, username: partner?.username });
       }
-    });
+    }
+
+    this.activeChats.delete(chatId);
+    break;
+  }
+
+  console.log(`User disconnected and removed: ${leavingId}`);
+});
+
   }
 
   async joinQueue(userId, socketId, queue) {
