@@ -60,8 +60,10 @@ class SocketService {
       if (partnerId) {
         const partnerSocket = this.userSockets.get(partnerId);
         if (partnerSocket?.connected) {
+          partnerSocket.emit('partner-disconnected', { chatId });
+          io.to(chatId).emit('partner-disconnected', { chatId });
           partnerSocket.leave(chatId);
-          partnerSocket.emit('partner-disconnected');
+
         }
 
         // requeue partner
@@ -164,8 +166,9 @@ class SocketService {
   if (partnerId) {
     const partnerSocket = this.userSockets.get(partnerId);
     if (partnerSocket?.connected) {
+      partnerSocket.emit('partner-disconnected', { chatId });
+      io.to(chatId).emit('partner-disconnected', { chatId });
       partnerSocket.leave(chatId);
-      partnerSocket.emit('partner-disconnected');
 
       try {
         const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
@@ -204,8 +207,9 @@ socket.on('disconnect', async () => {
     if (partnerId) {
       const partnerSocket = this.userSockets.get(partnerId);
       if (partnerSocket?.connected) {
+        partnerSocket.emit('partner-disconnected', { chatId });
+        io.to(chatId).emit('partner-disconnected', { chatId });
         partnerSocket.leave(chatId);
-        partnerSocket.emit('partner-disconnected');
 
         try {
           const result = await this.joinQueue(partnerId, partnerSocket.id, queue);

@@ -39,7 +39,7 @@ io.on('connection', (socket) => {
   // Track user connections for notifications
   socket.on('register-user', ({ userId }) => {
     connectedUsers.set(userId, socket.id);
-    console.log(`👤 User ${userId} connected with socket ${socket.id}`);
+    console.log(`User ${userId} connected with socket ${socket.id}`);
   });
   
   socket.on('disconnect', () => {
@@ -47,7 +47,7 @@ io.on('connection', (socket) => {
     for (let [userId, socketId] of connectedUsers.entries()) {
       if (socketId === socket.id) {
         connectedUsers.delete(userId);
-        console.log(`👋 User ${userId} disconnected`);
+        console.log(`User ${userId} disconnected`);
         break;
       }
     }
