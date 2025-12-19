@@ -61,6 +61,6 @@ setInterval(async () => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🌐 API: https://blahbluh-production.up.railway.app/api/generate-user-id`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`API: https://blahbluh-production.up.railway.app/api/generate-user-id`);
 });
