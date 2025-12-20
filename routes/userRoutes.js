@@ -15,41 +15,40 @@ router.post('/review', async (req, res) => {
       return res.status(400).json({ error: 'Cannot review yourself' });
     }
 
-    // Check existing review
-    const { data: existingReview, error: fetchError } = await supabase
+    // Fetch existing review (if any)
+    const { data: existingReview } = await supabase
       .from('user_reviews')
       .select('rating')
       .eq('reviewer_id', reviewerId)
       .eq('reviewed_user_id', reviewedUserId)
+      .maybeSingle();
+
+    // Fetch current aggregates
+    const { data: user } = await supabase
+      .from('users')
+      .select('rating_total, rating_count')
+      .eq('id', reviewedUserId)
       .single();
 
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      throw fetchError;
-    }
+    let newTotal = user.rating_total;
+    let newCount = user.rating_count;
 
     if (existingReview) {
-      // 🔁 UPDATE EXISTING REVIEW
+      // Update existing review
       const delta = rating - existingReview.rating;
+      newTotal += delta;
 
       await supabase
         .from('user_reviews')
-        .update({
-          rating,
-          updated_at: new Date()
-        })
+        .update({ rating, updated_at: new Date() })
         .eq('reviewer_id', reviewerId)
         .eq('reviewed_user_id', reviewedUserId);
 
-      // 🔁 UPDATE USER AGGREGATES
-      await supabase
-        .from('users')
-        .update({
-          rating_total: supabase.raw(`rating_total + ${delta}`)
-        })
-        .eq('id', reviewedUserId);
-
     } else {
-      // ➕ INSERT NEW REVIEW
+      // Insert new review
+      newTotal += rating;
+      newCount += 1;
+
       await supabase
         .from('user_reviews')
         .insert({
@@ -57,18 +56,19 @@ router.post('/review', async (req, res) => {
           reviewed_user_id: reviewedUserId,
           rating
         });
-
-      // ➕ UPDATE USER AGGREGATES
-      await supabase
-        .from('users')
-        .update({
-          rating_total: supabase.raw(`rating_total + ${rating}`),
-          rating_count: supabase.raw(`rating_count + 1`)
-        })
-        .eq('id', reviewedUserId);
     }
 
+    // Update user aggregates
+    await supabase
+      .from('users')
+      .update({
+        rating_total: newTotal,
+        rating_count: newCount
+      })
+      .eq('id', reviewedUserId);
+
     res.json({ success: true });
+
   } catch (err) {
     console.error('Review error:', err);
     res.status(500).json({ error: 'Failed to submit review' });
