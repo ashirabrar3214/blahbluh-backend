@@ -7,7 +7,7 @@ router.post('/review', async (req, res) => {
   try {
     const { reviewerId, reviewedUserId, rating } = req.body;
 
-    if (!reviewerId || !reviewedUserId || !rating) {
+    if (!reviewerId || !reviewedUserId || !rating == null) {
       return res.status(400).json({ error: 'Missing fields' });
     }
 
