@@ -44,42 +44,48 @@ class SocketService {
       socket.emit('queue-heartbeat-response', { inQueue: userInQueue });
     });
 
-    // Atomic skip partner
-    socket.on('skip-partner', async ({ chatId, userId }) => {
-      const chatData = this.activeChats.get(chatId);
-      socket.leave(chatId);
+    // Atomic skip partner (FIXED)
+    // Atomic skip partner (robust + no double-skip fallout)
+  socket.on('skip-partner', async ({ chatId, userId }) => {
+    const getId = (u) => u?.userId ?? u?.id;
 
-      const getId = (u) => u?.userId ?? u?.id;
+    // Remove the skipper from the room first
+    socket.leave(chatId);
 
-      if (chatData) {
-        const me = chatData.users.find(u => getId(u) === userId);
-        const partner = chatData.users.find(u => getId(u) !== userId);
-        const partnerId = getId(partner);
+    const chatData = this.activeChats.get(chatId);
 
-        // notify partner + boot them from the room
-        if (partnerId) {
-          const partnerSocket = this.userSockets.get(partnerId);
-          if (partnerSocket?.connected) {
-            partnerSocket.emit('partner-disconnected', { chatId });
-            io.to(chatId).emit('partner-disconnected', { chatId });
-            partnerSocket.leave(chatId);
+    // If server already forgot the chat (double emits, stale client),
+    // at least requeue the skipper safely.
+    if (!chatData) {
+      const myRes = await this.joinQueue(userId, socket.id, queue);
+      socket.emit('queue-joined', myRes);
+      return;
+    }
 
-          }
+    const partner = chatData.users.find(u => getId(u) !== userId);
+    const partnerId = getId(partner);
 
-          await this.joinQueue(partnerId, partnerSocket.id, queue);
-          await this.joinQueue(userId, socket.id, queue);
+    // Tell whoever is still in the room (partner) that chat ended.
+    // (Skipper already left the room above, so they won't get it.)
+    io.to(chatId).emit('partner-disconnected', { chatId });
 
-          this.activeChats.delete(chatId);
-        }
-      } else {
-        // fallback: at least requeue me
-        if (!queue.some(u => (u.userId ?? u.id) === userId)) {
-          await this.joinQueue(userId, socket.id, queue);
-        }
-      }
+    // Try direct partner socket too (in case they never joined the room)
+    const partnerSocket = partnerId ? this.userSockets.get(partnerId) : null;
+    if (partnerSocket?.connected) {
+      partnerSocket.emit('partner-disconnected', { chatId });
+      partnerSocket.leave(chatId);
+    }
 
-      const position = queue.findIndex(u => u.userId === userId) + 1;
-      socket.emit('queue-joined', { success: true, queuePosition: position });
+    // Requeue both, safely
+    if (partnerId) {
+      const partnerRes = await this.joinQueue(partnerId, partnerSocket?.id, queue);
+      if (partnerSocket?.connected) partnerSocket.emit('queue-joined', partnerRes);
+    }
+
+    const myRes = await this.joinQueue(userId, socket.id, queue);
+    socket.emit('queue-joined', myRes);
+
+    this.activeChats.delete(chatId);
   });
 
 
@@ -147,34 +153,33 @@ class SocketService {
     });
 
     socket.on('leave-chat', async ({ chatId, userId }) => {
-  const chatData = this.activeChats.get(chatId);
-  if (!chatData) return;
+      const chatData = this.activeChats.get(chatId);
+      if (!chatData) return;
 
-  const getId = (u) => u?.userId ?? u?.id;
+      const getId = (u) => u?.userId ?? u?.id;
+      const partner = chatData.users.find(u => getId(u) !== userId);
+      const partnerId = getId(partner);
 
-  const partner = chatData.users.find(u => getId(u) !== userId);
-  const partnerId = getId(partner);
+      // notify + requeue partner
+      if (partnerId) {
+        const partnerSocket = this.userSockets.get(partnerId);
+        if (partnerSocket?.connected) {
+          partnerSocket.emit('partner-disconnected', { chatId });
+          partnerSocket.leave(chatId);
 
-  // notify + requeue partner
-  if (partnerId) {
-    const partnerSocket = this.userSockets.get(partnerId);
-    if (partnerSocket?.connected) {
-      partnerSocket.emit('partner-disconnected', { chatId });
-      io.to(chatId).emit('partner-disconnected', { chatId });
-      partnerSocket.leave(chatId);
-
-      try {
-        const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
-        partnerSocket.emit('queue-joined', result);
-      } catch (e) {
-        console.error('Error re-joining partner to queue:', e);
+          try {
+            const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
+            partnerSocket.emit('queue-joined', result);
+          } catch (e) {
+            console.error('Error re-joining partner to queue:', e);
+          }
+        }
       }
-    }
-  }
 
-  socket.leave(chatId);
-  this.activeChats.delete(chatId);
-});
+      socket.leave(chatId);
+      this.activeChats.delete(chatId);
+    });
+    
 
 socket.on('disconnect', async () => {
   const leavingId = socket.userId;
@@ -201,7 +206,6 @@ socket.on('disconnect', async () => {
       const partnerSocket = this.userSockets.get(partnerId);
       if (partnerSocket?.connected) {
         partnerSocket.emit('partner-disconnected', { chatId });
-        io.to(chatId).emit('partner-disconnected', { chatId });
         partnerSocket.leave(chatId);
 
         try {
