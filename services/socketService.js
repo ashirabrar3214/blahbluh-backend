@@ -152,7 +152,7 @@ class SocketService {
       io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
     });
 
-    socket.on('leave-chat', async ({ chatId, userId }) => {
+    socket.on('leave-chat', async ({ chatId, userId, reason, requeuePartner = true }) => {
       const chatData = this.activeChats.get(chatId);
       if (!chatData) return;
 
@@ -160,26 +160,37 @@ class SocketService {
       const partner = chatData.users.find(u => getId(u) !== userId);
       const partnerId = getId(partner);
 
-      // notify + requeue partner
+      // ✅ Always remove the leaver from queue if they are in it
+      const meIdx = queue.findIndex(u => u.userId === userId);
+      if (meIdx !== -1) queue.splice(meIdx, 1);
+
+      // Notify partner that chat ended
       if (partnerId) {
         const partnerSocket = this.userSockets.get(partnerId);
         if (partnerSocket?.connected) {
           partnerSocket.emit('partner-disconnected', { chatId });
           partnerSocket.leave(chatId);
 
-          try {
-            const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
-            partnerSocket.emit('queue-joined', result);
-          } catch (e) {
-            console.error('Error re-joining partner to queue:', e);
+          // ✅ Requeue partner unless explicitly disabled
+          if (requeuePartner) {
+            try {
+              const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
+              partnerSocket.emit('queue-joined', result);
+            } catch (e) {
+              console.error('Error re-joining partner to queue:', e);
+            }
           }
         }
       }
 
+      // Leave room and delete active chat
       socket.leave(chatId);
       this.activeChats.delete(chatId);
+
+      // NOTE:
+      // If reason === 'exit', we intentionally do NOT requeue the leaver.
+      // The frontend also calls /leave-queue for safety.
     });
-    
 
 socket.on('disconnect', async () => {
   const leavingId = socket.userId;
