@@ -44,12 +44,13 @@ class SocketService {
       socket.emit('queue-heartbeat-response', { inQueue: userInQueue });
     });
 
-    // Atomic skip partner (FIXED)
     // Atomic skip partner (robust + no double-skip fallout)
     socket.on('skip-partner', async ({ chatId, userId, reason }) => {
       const getId = (u) => u?.userId ?? u?.id;
 
-      // Remove the skipper from the room first
+      console.log(`[skip-partner] user=${userId} chatId=${chatId} reason=${reason}`);
+
+      // Remove the skipper from the room first (so they don't receive partner-disconnected)
       socket.leave(chatId);
 
       const chatData = this.activeChats.get(chatId);
@@ -57,40 +58,48 @@ class SocketService {
       // If server already forgot the chat (double emits, stale client),
       // at least requeue the skipper safely.
       if (!chatData) {
-        const myRes = await this.joinQueue(userId, socket.id, queue);
-        socket.emit('queue-joined', myRes);
+        if (reason !== 'exit') {
+          const myRes = await this.joinQueue(userId, socket.id, queue);
+          socket.emit('queue-joined', myRes);
+        }
+        console.log(`[skip-partner] chatData missing for chatId=${chatId} (stale client)`);
         return;
       }
 
       const partner = chatData.users.find(u => getId(u) !== userId);
       const partnerId = getId(partner);
 
+      const shouldRequeuePartner = reason !== 'exit';
+
       // Tell whoever is still in the room (partner) that chat ended.
-      io.to(chatId).emit('partner-disconnected', { chatId });
+      io.to(chatId).emit('partner-disconnected', {
+        chatId,
+        reason: reason || 'skip',
+        shouldRequeue: shouldRequeuePartner,
+        byUserId: userId
+      });
 
       // Try direct partner socket too (in case they never joined the room)
       const partnerSocket = partnerId ? this.userSockets.get(partnerId) : null;
       if (partnerSocket?.connected) {
-        partnerSocket.emit('partner-disconnected', { chatId });
+        partnerSocket.emit('partner-disconnected', {
+          chatId,
+          reason: reason || 'skip',
+          shouldRequeue: shouldRequeuePartner,
+          byUserId: userId
+        });
         partnerSocket.leave(chatId);
       }
 
-      // IMPORTANT:
-      // Don't auto-requeue the partner here.
-      // Let the partner's own client decide (it already listens for
-      // 'partner-disconnected' and calls joinQueue unless they are exiting).
-      //
-      // This prevents: A clicks Home + B clicks Skip => server requeues A anyway.
-
-      // DO NOT requeue skipper if they explicitly exited
+      // Requeue skipper unless they explicitly exited (Home)
       if (reason !== 'exit') {
         const myRes = await this.joinQueue(userId, socket.id, queue);
         socket.emit('queue-joined', myRes);
       }
 
       this.activeChats.delete(chatId);
+      console.log(`[skip-partner] chat deleted chatId=${chatId}`);
     });
-
 
     socket.on('join-chat', ({ chatId }) => {
       socket.join(chatId);
@@ -171,7 +180,12 @@ class SocketService {
       if (partnerId) {
         const partnerSocket = this.userSockets.get(partnerId);
         if (partnerSocket?.connected) {
-          partnerSocket.emit('partner-disconnected', { chatId });
+          partnerSocket.emit('partner-disconnected', {
+            chatId,
+            reason: reason || 'leave-chat',
+            shouldRequeue: !!requeuePartner,
+            byUserId: userId
+          });
           partnerSocket.leave(chatId);
 
           // ✅ Requeue partner unless explicitly disabled
@@ -219,7 +233,13 @@ socket.on('disconnect', async () => {
     if (partnerId) {
       const partnerSocket = this.userSockets.get(partnerId);
       if (partnerSocket?.connected) {
-        partnerSocket.emit('partner-disconnected', { chatId });
+        partnerSocket.emit('partner-disconnected', {
+          chatId,
+          reason: 'disconnect',
+          shouldRequeue: true,
+          byUserId: leavingId
+        });
+
         partnerSocket.leave(chatId);
 
         try {
@@ -283,10 +303,18 @@ socket.on('disconnect', async () => {
 
   async tryMatchUsers(queue) {
     while (queue.length >= 2) {
-      const user1 = queue[0];
-      const user2 = queue[1];
-      const socket1 = this.userSockets.get(user1.userId);
-      const socket2 = this.userSockets.get(user2.userId);
+      const raw1 = queue[0];
+      const raw2 = queue[1];
+
+      const id1 = raw1?.userId ?? raw1?.id;
+      const id2 = raw2?.userId ?? raw2?.id;
+
+      // If queue contains garbage entries, drop them safely
+      if (!id1) { queue.shift(); continue; }
+      if (!id2) { queue.splice(1, 1); continue; }
+
+      const socket1 = this.userSockets.get(id1);
+      const socket2 = this.userSockets.get(id2);
 
       if (!socket1?.connected || !socket2?.connected) {
         if (!socket1?.connected) queue.shift();
@@ -296,7 +324,7 @@ socket.on('disconnect', async () => {
 
       // Check if users have blocked each other
       try {
-        const isBlocked = await friendService.isBlocked(user1.userId, user2.userId);
+        const isBlocked = await friendService.isBlocked(id1, id2);
         if (isBlocked) {
           // Skip this pairing, remove user2 and try again
           queue.splice(1, 1);
@@ -306,14 +334,44 @@ socket.on('disconnect', async () => {
         console.error('Error checking blocked users:', error);
       }
 
+      // Remove them from queue now (pairing is happening)
       queue.splice(0, 2);
-      const chatId = uuidv4();
-      this.activeChats.set(chatId, { users: [user1, user2], messages: [] });
 
-      socket1.emit('chat-paired', { chatId, users: [user1, user2] });
-      socket2.emit('chat-paired', { chatId, users: [user1, user2] });
+      // 🔥 Ensure usernames exist (fixes Stranger/?)
+      let u1 = { userId: id1, username: raw1?.username };
+      let u2 = { userId: id2, username: raw2?.username };
+
+      if (!u1.username || !u2.username) {
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('id, username')
+            .in('id', [id1, id2]);
+
+          if (!error && Array.isArray(data)) {
+            const map = new Map(data.map(x => [x.id, x.username]));
+            u1.username = u1.username || map.get(id1) || 'Stranger';
+            u2.username = u2.username || map.get(id2) || 'Stranger';
+          } else {
+            u1.username = u1.username || 'Stranger';
+            u2.username = u2.username || 'Stranger';
+          }
+        } catch (e) {
+          u1.username = u1.username || 'Stranger';
+          u2.username = u2.username || 'Stranger';
+        }
+      }
+
+      const chatId = uuidv4();
+      this.activeChats.set(chatId, { users: [u1, u2], messages: [] });
+
+      socket1.emit('chat-paired', { chatId, users: [u1, u2] });
+      socket2.emit('chat-paired', { chatId, users: [u1, u2] });
+
+      console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
     }
   }
+
 }
 
 module.exports = new SocketService();
