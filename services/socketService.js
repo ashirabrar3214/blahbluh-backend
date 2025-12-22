@@ -46,51 +46,50 @@ class SocketService {
 
     // Atomic skip partner (FIXED)
     // Atomic skip partner (robust + no double-skip fallout)
-  socket.on('skip-partner', async ({ chatId, userId, reason }) => {
-    const getId = (u) => u?.userId ?? u?.id;
+    socket.on('skip-partner', async ({ chatId, userId, reason }) => {
+      const getId = (u) => u?.userId ?? u?.id;
 
-    // Remove the skipper from the room first
-    socket.leave(chatId);
+      // Remove the skipper from the room first
+      socket.leave(chatId);
 
-    const chatData = this.activeChats.get(chatId);
+      const chatData = this.activeChats.get(chatId);
 
-    // If server already forgot the chat (double emits, stale client),
-    // at least requeue the skipper safely.
-    if (!chatData) {
-      const myRes = await this.joinQueue(userId, socket.id, queue);
-      socket.emit('queue-joined', myRes);
-      return;
-    }
+      // If server already forgot the chat (double emits, stale client),
+      // at least requeue the skipper safely.
+      if (!chatData) {
+        const myRes = await this.joinQueue(userId, socket.id, queue);
+        socket.emit('queue-joined', myRes);
+        return;
+      }
 
-    const partner = chatData.users.find(u => getId(u) !== userId);
-    const partnerId = getId(partner);
+      const partner = chatData.users.find(u => getId(u) !== userId);
+      const partnerId = getId(partner);
 
-    // Tell whoever is still in the room (partner) that chat ended.
-    // (Skipper already left the room above, so they won't get it.)
-    io.to(chatId).emit('partner-disconnected', { chatId });
+      // Tell whoever is still in the room (partner) that chat ended.
+      io.to(chatId).emit('partner-disconnected', { chatId });
 
-    // Try direct partner socket too (in case they never joined the room)
-    const partnerSocket = partnerId ? this.userSockets.get(partnerId) : null;
-    if (partnerSocket?.connected) {
-      partnerSocket.emit('partner-disconnected', { chatId });
-      partnerSocket.leave(chatId);
-    }
+      // Try direct partner socket too (in case they never joined the room)
+      const partnerSocket = partnerId ? this.userSockets.get(partnerId) : null;
+      if (partnerSocket?.connected) {
+        partnerSocket.emit('partner-disconnected', { chatId });
+        partnerSocket.leave(chatId);
+      }
 
-    // Requeue both, safely
-    // Requeue partner ALWAYS
-    if (partnerId) {
-      const partnerRes = await this.joinQueue(partnerId, partnerSocket?.id, queue);
-      if (partnerSocket?.connected) partnerSocket.emit('queue-joined', partnerRes);
-    }
+      // IMPORTANT:
+      // Don't auto-requeue the partner here.
+      // Let the partner's own client decide (it already listens for
+      // 'partner-disconnected' and calls joinQueue unless they are exiting).
+      //
+      // This prevents: A clicks Home + B clicks Skip => server requeues A anyway.
 
-    // DO NOT requeue skipper if they explicitly exited
-    if (reason !== 'exit') {
-      const myRes = await this.joinQueue(userId, socket.id, queue);
-      socket.emit('queue-joined', myRes);
-    }
+      // DO NOT requeue skipper if they explicitly exited
+      if (reason !== 'exit') {
+        const myRes = await this.joinQueue(userId, socket.id, queue);
+        socket.emit('queue-joined', myRes);
+      }
 
-    this.activeChats.delete(chatId);
-  });
+      this.activeChats.delete(chatId);
+    });
 
 
     socket.on('join-chat', ({ chatId }) => {
@@ -156,7 +155,7 @@ class SocketService {
       io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
     });
 
-    socket.on('leave-chat', async ({ chatId, userId, reason, requeuePartner = true }) => {
+    socket.on('leave-chat', async ({ chatId, userId, reason, requeuePartner = false })=> {
       const chatData = this.activeChats.get(chatId);
       if (!chatData) return;
 
