@@ -46,7 +46,7 @@ class SocketService {
 
     // Atomic skip partner (FIXED)
     // Atomic skip partner (robust + no double-skip fallout)
-  socket.on('skip-partner', async ({ chatId, userId }) => {
+  socket.on('skip-partner', async ({ chatId, userId, reason }) => {
     const getId = (u) => u?.userId ?? u?.id;
 
     // Remove the skipper from the room first
@@ -77,13 +77,17 @@ class SocketService {
     }
 
     // Requeue both, safely
+    // Requeue partner ALWAYS
     if (partnerId) {
       const partnerRes = await this.joinQueue(partnerId, partnerSocket?.id, queue);
       if (partnerSocket?.connected) partnerSocket.emit('queue-joined', partnerRes);
     }
 
-    const myRes = await this.joinQueue(userId, socket.id, queue);
-    socket.emit('queue-joined', myRes);
+    // DO NOT requeue skipper if they explicitly exited
+    if (reason !== 'exit') {
+      const myRes = await this.joinQueue(userId, socket.id, queue);
+      socket.emit('queue-joined', myRes);
+    }
 
     this.activeChats.delete(chatId);
   });
