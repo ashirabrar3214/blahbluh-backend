@@ -11,6 +11,7 @@ router.post('/join-queue', async (req, res) => {
     
     if (!queue.find(u => u.userId === userId)) {
       queue.push({ userId: user.id, username: user.username });
+      console.log(`[QUEUE] User ${userId} (${user.username}) joined queue. Total: ${queue.length}`);
     }
     
     const position = queue.findIndex(u => u.userId === userId) + 1;
@@ -23,7 +24,10 @@ router.post('/join-queue', async (req, res) => {
 router.post('/leave-queue', (req, res) => {
   const { userId } = req.body;
   const index = queue.findIndex(u => u.userId === userId);
-  if (index !== -1) queue.splice(index, 1);
+  if (index !== -1) {
+    queue.splice(index, 1);
+    console.log(`[QUEUE] User ${userId} left queue. Total: ${queue.length}`);
+  }
   res.json({ success: true });
 });
 

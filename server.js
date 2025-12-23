@@ -34,12 +34,14 @@ global.connectedUsers = connectedUsers;
 
 // Socket handling
 io.on('connection', (socket) => {
+  console.log(`[SOCKET] New connection: ${socket.id}`);
   socketService.handleConnection(io, socket, queue);
   
   // Track user connections for notifications
   socket.on('register-user', ({ userId }) => {
     connectedUsers.set(userId, socket.id);
-    console.log(`User ${userId} connected with socket ${socket.id}`);
+    console.log(`[SOCKET] User registered: ${userId} (Socket: ${socket.id})`);
+    console.log(`[SOCKET] Total connected users: ${connectedUsers.size}`);
   });
   
   socket.on('disconnect', () => {
@@ -47,7 +49,8 @@ io.on('connection', (socket) => {
     for (let [userId, socketId] of connectedUsers.entries()) {
       if (socketId === socket.id) {
         connectedUsers.delete(userId);
-        console.log(`User ${userId} disconnected`);
+        console.log(`[SOCKET] User disconnected: ${userId}`);
+        console.log(`[SOCKET] Total connected users: ${connectedUsers.size}`);
         break;
       }
     }

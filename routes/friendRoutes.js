@@ -6,6 +6,7 @@ const router = express.Router();
 router.post('/friend-request', async (req, res) => {
   try {
     const { fromUserId, toUserId } = req.body;
+    console.log(`[FRIEND] Request from ${fromUserId} to ${toUserId}`);
     const result = await friendService.sendFriendRequest(fromUserId, toUserId);
     res.json(result);
   } catch (error) {
@@ -17,6 +18,7 @@ router.post('/friend-request', async (req, res) => {
 router.post('/accept-friend', async (req, res) => {
   try {
     const { requestId, userId } = req.body;
+    console.log(`[FRIEND] Accept request ${requestId} by user ${userId}`);
     const acceptedRequest = await friendService.acceptFriendRequest(requestId, userId);
     
     if (acceptedRequest && acceptedRequest.from_user_id) {

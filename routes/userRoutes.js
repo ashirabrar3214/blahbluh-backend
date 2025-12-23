@@ -67,6 +67,7 @@ router.post('/review', async (req, res) => {
       })
       .eq('id', reviewedUserId);
 
+    console.log(`[REVIEW] User ${reviewerId} rated ${reviewedUserId}: ${rating}`);
     res.json({ success: true });
 
   } catch (err) {
@@ -114,6 +115,7 @@ router.get('/user-rating/:userId', async (req, res) => {
 router.get('/generate-user-id', async (req, res) => {
   try {
     const user = await userService.createUser();
+    console.log(`[USER] Generated new user: ${user.id} (${user.username})`);
     res.json({ userId: user.id, username: user.username });
   } catch (error) {
     res.status(500).json({ error: error.message });
