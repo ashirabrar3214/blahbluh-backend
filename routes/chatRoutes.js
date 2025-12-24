@@ -122,7 +122,7 @@ router.post('/exit', async (req, res) => {
 
 // POST /log-tags
 // A dedicated route to receive tags and print them to the server console
-app.post('/log-tags', (req, res) => {
+router.post('/log-tags', (req, res) => {
   try {
     const { tags } = req.body;
 
