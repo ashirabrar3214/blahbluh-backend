@@ -1,6 +1,7 @@
 const express = require('express');
 const userService = require('../services/userService');
 const socketService = require('../services/socketService');
+const geminiService = require('./geminiService');
 const router = express.Router();
 
 const queue = [];
@@ -167,6 +168,19 @@ router.get('/user-interests/:userId', async (req, res) => {
   } catch (error) {
     console.error('Error in /user-interests/:userId:', error);
     res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+});
+
+// GET /suggest-topic/:userId
+// Uses Gemini to suggest a conversation starter based on user interests
+router.get('/suggest-topic/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const suggestion = await geminiService.generateConversationStarter(userId);
+    res.json({ success: true, suggestion });
+  } catch (error) {
+    console.error('Error in /suggest-topic:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate suggestion' });
   }
 });
 
