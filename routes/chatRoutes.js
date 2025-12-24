@@ -156,5 +156,18 @@ router.post('/update-interests', async (req, res) => {
   }
 });
 
+// GET /user-interests/:userId
+// Retrieves the user's interests array from the database
+router.get('/user-interests/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log(`[ChatRoutes] GET /user-interests/${userId}`);
+    const interests = await userService.getUserInterests(userId);
+    res.json({ success: true, interests: interests || [] });
+  } catch (error) {
+    console.error('Error in /user-interests/:userId:', error);
+    res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+});
 
 module.exports = { router, queue };

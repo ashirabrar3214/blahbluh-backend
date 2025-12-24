@@ -95,6 +95,21 @@ class UserService {
     }
     return data;
   }
+
+  async getUserInterests(userId) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('interests')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error(error);
+      if (error.code === 'PGRST116') return []; // Return empty if user not found
+      throw error;
+    }
+    return data?.interests || [];
+  }
 }
 
 module.exports = new UserService();
