@@ -10,7 +10,11 @@ try {
 }
 
 const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) console.warn("[Gemini] Warning: GEMINI_API_KEY is missing from environment variables.");
+if (!apiKey) {
+  console.warn("[Gemini] Warning: GEMINI_API_KEY is missing from environment variables.");
+} else {
+  console.log("[Gemini] API Key loaded successfully. AI Service is ready.");
+}
 
 const genAI = (apiKey && GoogleGenerativeAI) ? new GoogleGenerativeAI(apiKey) : null;
 
