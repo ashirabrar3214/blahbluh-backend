@@ -120,4 +120,34 @@ router.post('/exit', async (req, res) => {
   }
 });
 
+// POST /log-tags
+// A dedicated route to receive tags and print them to the server console
+app.post('/log-tags', (req, res) => {
+  try {
+    const { tags } = req.body;
+
+    // Validation: Ensure tags are provided and are in an array format
+    if (!tags || !Array.isArray(tags)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid input: "tags" must be an array.' 
+      });
+    }
+
+    // Log the tags to the console as requested
+    console.log('Received tags:', tags);
+
+    // Send a success response back to the client
+    res.status(200).json({
+      success: true,
+      message: 'Tags received and logged successfully.'
+    });
+
+  } catch (error) {
+    console.error('Error in /log-tags:', error);
+    res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+});
+
+
 module.exports = { router, queue };
