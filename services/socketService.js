@@ -11,7 +11,9 @@ class SocketService {
   }
 
   handleConnection(io, socket, queue) {
+    console.log(`[SocketService] New connection handling started: ${socket.id}`);
     socket.on('register-user', ({ userId }) => {
+      console.log(`[SocketService] 'register-user' received for ${userId} on socket ${socket.id}`);
       this.userSockets.set(userId, socket);
       this.userSessions.set(userId, socket.id);
       socket.userId = userId;
@@ -21,6 +23,7 @@ class SocketService {
 
     // Fetch unread messages on connect
     socket.on('fetch-unread-messages', async ({ userId }) => {
+      console.log(`[SocketService] 'fetch-unread-messages' for ${userId}`);
       try {
         const { data: friends, error } = await supabase
           .from('friends')
@@ -29,9 +32,12 @@ class SocketService {
           
         if (error) throw error;
         
+        console.log(`[SocketService] Found ${friends?.length || 0} friends for unread check`);
+        
         friends?.forEach(friend => {
           const chatId = `friend_${[userId, friend.friend_id].sort().join('_')}`;
           socket.join(chatId);
+          console.log(`[SocketService] User ${userId} joined friend chat room: ${chatId}`);
         });
       } catch (error) {
         console.error('Error fetching unread messages:', error);
@@ -40,25 +46,30 @@ class SocketService {
 
     // Queue heartbeat
     socket.on('queue-heartbeat', ({ userId }) => {
+      // console.log(`[SocketService] 'queue-heartbeat' for ${userId}`); 
       const userInQueue = queue.some(user => user.userId === userId);
       socket.emit('queue-heartbeat-response', { inQueue: userInQueue });
     });
 
     // Atomic skip partner (robust + no double-skip fallout)
     socket.on('skip-partner', async ({ chatId, userId, reason }) => {
+      console.log(`[SocketService] 'skip-partner' received. User: ${userId}, Chat: ${chatId}, Reason: ${reason}`);
       const getId = (u) => u?.userId ?? u?.id;
 
       console.log(`[skip-partner] user=${userId} chatId=${chatId} reason=${reason}`);
 
       // Remove the skipper from the room first (so they don't receive partner-disconnected)
       socket.leave(chatId);
+      console.log(`[SocketService] User ${userId} left room ${chatId} (skip)`);
 
       const chatData = this.activeChats.get(chatId);
 
       // If server already forgot the chat (double emits, stale client),
       // at least requeue the skipper safely.
       if (!chatData) {
+        console.log(`[SocketService] Chat data not found for ${chatId}. Handling stale client.`);
         if (reason !== 'exit') {
+          console.log(`[SocketService] Requeueing user ${userId} (stale chat)`);
           const myRes = await this.joinQueue(userId, socket.id, queue);
           socket.emit('queue-joined', myRes);
         }
@@ -68,10 +79,12 @@ class SocketService {
 
       const partner = chatData.users.find(u => getId(u) !== userId);
       const partnerId = getId(partner);
+      console.log(`[SocketService] Identified partner: ${partnerId}`);
 
       const shouldRequeuePartner = reason !== 'exit';
 
       // Tell whoever is still in the room (partner) that chat ended.
+      console.log(`[SocketService] Notifying room ${chatId} of partner disconnect`);
       io.to(chatId).emit('partner-disconnected', {
         chatId,
         reason: reason || 'skip',
@@ -82,6 +95,7 @@ class SocketService {
       // Try direct partner socket too (in case they never joined the room)
       const partnerSocket = partnerId ? this.userSockets.get(partnerId) : null;
       if (partnerSocket?.connected) {
+        console.log(`[SocketService] Sending direct disconnect to partner socket ${partnerSocket.id}`);
         partnerSocket.emit('partner-disconnected', {
           chatId,
           reason: reason || 'skip',
@@ -89,10 +103,12 @@ class SocketService {
           byUserId: userId
         });
         partnerSocket.leave(chatId);
+        console.log(`[SocketService] Partner ${partnerId} left room ${chatId}`);
       }
 
       // Requeue skipper unless they explicitly exited (Home)
       if (reason !== 'exit') {
+        console.log(`[SocketService] Requeueing skipper ${userId}`);
         const myRes = await this.joinQueue(userId, socket.id, queue);
         socket.emit('queue-joined', myRes);
       }
@@ -102,15 +118,18 @@ class SocketService {
     });
 
     socket.on('join-chat', ({ chatId }) => {
+      console.log(`[SocketService] 'join-chat' received for ${chatId} from ${socket.id}`);
       socket.join(chatId);
     });
 
     socket.on('send-message', async (data) => {
+      console.log(`[SocketService] 'send-message' received`, data);
       try {
         const { chatId, message, userId, username, replyTo } = data;
         
         // Store friend messages in database
         if (chatId.startsWith('friend_')) {
+          console.log(`[SocketService] Processing friend message for ${chatId}`);
           const [, userA, userB] = chatId.split('_');
           const receiverId = userA === userId ? userB : userA;
           
@@ -126,6 +145,7 @@ class SocketService {
             .single();
             
           if (error) throw error;
+          console.log(`[SocketService] Friend message saved to DB: ${savedMessage.id}`);
           
           // Create message data with database ID
           const messageData = {
@@ -141,8 +161,10 @@ class SocketService {
           // Send to chat room AND emit special friend message event
           io.to(chatId).emit('new-message', messageData);
           io.to(chatId).emit('friend-message-received', messageData);
+          console.log(`[SocketService] Friend message emitted to room ${chatId}`);
         } else {
           // Regular random chat message
+          console.log(`[SocketService] Processing regular chat message for ${chatId}`);
           const messageData = {
             id: Date.now(),
             chatId,
@@ -154,6 +176,7 @@ class SocketService {
           };
           
           io.to(chatId).emit('new-message', messageData);
+          console.log(`[SocketService] Regular message emitted to room ${chatId}`);
         }
       } catch (error) {
         console.error('Error storing friend message:', error);
@@ -161,12 +184,17 @@ class SocketService {
     });
 
     socket.on('add-reaction', ({ chatId, messageId, emoji, userId }) => {
+      console.log(`[SocketService] 'add-reaction' ${emoji} to msg ${messageId} in ${chatId}`);
       io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
     });
 
     socket.on('leave-chat', async ({ chatId, userId, reason, requeuePartner = false })=> {
+      console.log(`[SocketService] 'leave-chat' received. User: ${userId}, Chat: ${chatId}, Reason: ${reason}, RequeuePartner: ${requeuePartner}`);
       const chatData = this.activeChats.get(chatId);
-      if (!chatData) return;
+      if (!chatData) {
+        console.log(`[SocketService] Chat data not found for ${chatId} during leave-chat`);
+        return;
+      }
 
       const getId = (u) => u?.userId ?? u?.id;
       const partner = chatData.users.find(u => getId(u) !== userId);
@@ -174,12 +202,16 @@ class SocketService {
 
       // ✅ Always remove the leaver from queue if they are in it
       const meIdx = queue.findIndex(u => u.userId === userId);
-      if (meIdx !== -1) queue.splice(meIdx, 1);
+      if (meIdx !== -1) {
+        queue.splice(meIdx, 1);
+        console.log(`[SocketService] Removed user ${userId} from queue during leave-chat`);
+      }
 
       // Notify partner that chat ended
       if (partnerId) {
         const partnerSocket = this.userSockets.get(partnerId);
         if (partnerSocket?.connected) {
+          console.log(`[SocketService] Notifying partner ${partnerId} of disconnect`);
           partnerSocket.emit('partner-disconnected', {
             chatId,
             reason: reason || 'leave-chat',
@@ -191,18 +223,22 @@ class SocketService {
           // ✅ Requeue partner unless explicitly disabled
           if (requeuePartner) {
             try {
+              console.log(`[SocketService] Requeueing partner ${partnerId}`);
               const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
               partnerSocket.emit('queue-joined', result);
             } catch (e) {
               console.error('Error re-joining partner to queue:', e);
             }
           }
+        } else {
+          console.log(`[SocketService] Partner ${partnerId} socket not connected`);
         }
       }
 
       // Leave room and delete active chat
       socket.leave(chatId);
       this.activeChats.delete(chatId);
+      console.log(`[SocketService] Chat ${chatId} deleted`);
 
       // NOTE:
       // If reason === 'exit', we intentionally do NOT requeue the leaver.
@@ -210,15 +246,23 @@ class SocketService {
     });
 
 socket.on('disconnect', async () => {
+  console.log(`[SocketService] Socket disconnected: ${socket.id}`);
   const leavingId = socket.userId;
-  if (!leavingId) return;
+  if (!leavingId) {
+    console.log(`[SocketService] No userId associated with disconnected socket ${socket.id}`);
+    return;
+  }
 
   this.userSessions.delete(leavingId);
   this.userSocketMap.delete(leavingId);
+  console.log(`[SocketService] Cleaned up sessions for ${leavingId}`);
 
   // remove from queue if present
   const qIndex = queue.findIndex(u => u.userId === leavingId);
-  if (qIndex !== -1) queue.splice(qIndex, 1);
+  if (qIndex !== -1) {
+    queue.splice(qIndex, 1);
+    console.log(`[SocketService] Removed ${leavingId} from queue`);
+  }
 
   const getId = (u) => u?.userId ?? u?.id;
 
@@ -227,12 +271,15 @@ socket.on('disconnect', async () => {
     const inChat = chatData.users.some(u => getId(u) === leavingId);
     if (!inChat) continue;
 
+    console.log(`[SocketService] Disconnected user ${leavingId} was in chat ${chatId}`);
+
     const partner = chatData.users.find(u => getId(u) !== leavingId);
     const partnerId = getId(partner);
 
     if (partnerId) {
       const partnerSocket = this.userSockets.get(partnerId);
       if (partnerSocket?.connected) {
+        console.log(`[SocketService] Notifying partner ${partnerId} of disconnect`);
         partnerSocket.emit('partner-disconnected', {
           chatId,
           reason: 'disconnect',
@@ -243,6 +290,7 @@ socket.on('disconnect', async () => {
         partnerSocket.leave(chatId);
 
         try {
+          console.log(`[SocketService] Requeueing partner ${partnerId}`);
           const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
           partnerSocket.emit('queue-joined', result);
         } catch (e) {
@@ -252,6 +300,7 @@ socket.on('disconnect', async () => {
     }
 
     this.activeChats.delete(chatId);
+    console.log(`[SocketService] Chat ${chatId} deleted due to disconnect`);
     break;
   }
 
@@ -259,6 +308,7 @@ socket.on('disconnect', async () => {
   for (const [userId, sock] of this.userSockets.entries()) {
     if (sock === socket) {
       this.userSockets.delete(userId);
+      console.log(`[SocketService] Removed socket mapping for ${userId}`);
       break;
     }
   }
@@ -270,10 +320,12 @@ socket.on('disconnect', async () => {
   }
 
   async joinQueue(userId, socketId, queue) {
+    console.log(`[SocketService] joinQueue called for ${userId}`);
     // Remove existing entry
     const existingIndex = queue.findIndex(u => u.userId === userId);
     if (existingIndex !== -1) {
       queue.splice(existingIndex, 1);
+      console.log(`[SocketService] Removed existing queue entry for ${userId}`);
     }
 
     // 🔥 ALWAYS hydrate from DB
@@ -288,12 +340,16 @@ socket.on('disconnect', async () => {
       return { success: false };
     }
 
+    console.log(`[SocketService] Hydrated user for queue: ${user.username}`);
+
     this.userSocketMap.set(userId, socketId);
 
     queue.push({
       userId: user.id,
       username: user.username
     });
+
+    console.log(`[SocketService] User ${userId} added to queue. Position: ${queue.length}`);
 
     return {
       queuePosition: queue.length,
@@ -302,6 +358,9 @@ socket.on('disconnect', async () => {
   }
 
   async tryMatchUsers(queue) {
+    if (queue.length >= 2) {
+      console.log(`[SocketService] tryMatchUsers processing queue. Size: ${queue.length}`);
+    }
     while (queue.length >= 2) {
       const raw1 = queue[0];
       const raw2 = queue[1];
@@ -309,14 +368,17 @@ socket.on('disconnect', async () => {
       const id1 = raw1?.userId ?? raw1?.id;
       const id2 = raw2?.userId ?? raw2?.id;
 
+      console.log(`[SocketService] Attempting to match ${id1} and ${id2}`);
+
       // If queue contains garbage entries, drop them safely
-      if (!id1) { queue.shift(); continue; }
-      if (!id2) { queue.splice(1, 1); continue; }
+      if (!id1) { queue.shift(); console.log(`[SocketService] Invalid user 1, removed`); continue; }
+      if (!id2) { queue.splice(1, 1); console.log(`[SocketService] Invalid user 2, removed`); continue; }
 
       const socket1 = this.userSockets.get(id1);
       const socket2 = this.userSockets.get(id2);
 
       if (!socket1?.connected || !socket2?.connected) {
+        console.log(`[SocketService] One or both sockets disconnected. S1: ${socket1?.connected}, S2: ${socket2?.connected}`);
         if (!socket1?.connected) queue.shift();
         if (queue.length > 1 && !socket2?.connected) queue.splice(1, 1);
         continue;
@@ -326,6 +388,7 @@ socket.on('disconnect', async () => {
       try {
         const isBlocked = await friendService.isBlocked(id1, id2);
         if (isBlocked) {
+          console.log(`[SocketService] Users ${id1} and ${id2} are blocked. Skipping match.`);
           // Skip this pairing, remove user2 and try again
           queue.splice(1, 1);
           continue;
@@ -336,6 +399,7 @@ socket.on('disconnect', async () => {
 
       // Remove them from queue now (pairing is happening)
       queue.splice(0, 2);
+      console.log(`[SocketService] Users removed from queue for pairing`);
 
       // 🔥 Ensure usernames exist (fixes Stranger/?)
       let u1 = { userId: id1, username: raw1?.username };
@@ -365,6 +429,7 @@ socket.on('disconnect', async () => {
       const chatId = uuidv4();
       this.activeChats.set(chatId, { users: [u1, u2], messages: [] });
 
+      console.log(`[SocketService] Active chat created: ${chatId}`);
       socket1.emit('chat-paired', { chatId, users: [u1, u2] });
       socket2.emit('chat-paired', { chatId, users: [u1, u2] });
 
