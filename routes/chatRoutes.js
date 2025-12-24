@@ -176,6 +176,7 @@ router.get('/user-interests/:userId', async (req, res) => {
 router.get('/suggest-topic/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log(`[ChatRoutes] Received topic suggestion request for ${userId}`);
     const suggestion = await geminiService.generateConversationStarter(userId);
     res.json({ success: true, suggestion });
   } catch (error) {
