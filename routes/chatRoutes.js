@@ -68,6 +68,9 @@ router.post('/exit', async (req, res) => {
         targetChatId = chatId;
         console.log(`[ChatRoutes] Found active chat ${chatId} for user ${userId}`);
         
+        // Remove chat immediately to prevent race conditions (double exit/requeue)
+        socketService.activeChats.delete(chatId);
+
         // Handle partner
         const partner = chatData.users.find(u => (u.userId || u.id) !== userId);
         if (partner) {
@@ -87,9 +90,13 @@ router.post('/exit', async (req, res) => {
             partnerSocket.leave(chatId);
             
             // Requeue partner
-            console.log(`[ChatRoutes] Requeueing partner ${partnerId}`);
-            const result = await socketService.joinQueue(partnerId, partnerSocket.id, queue);
-            partnerSocket.emit('queue-joined', result);
+            if (!queue.find(u => u.userId === partnerId)) {
+              console.log(`[ChatRoutes] Requeueing partner ${partnerId}`);
+              const result = await socketService.joinQueue(partnerId, partnerSocket.id, queue);
+              partnerSocket.emit('queue-joined', result);
+            } else {
+              console.log(`[ChatRoutes] Partner ${partnerId} already in queue, skipping requeue.`);
+            }
           } else {
             console.log(`[ChatRoutes] Partner ${partnerId} socket not connected`);
           }
@@ -102,7 +109,6 @@ router.post('/exit', async (req, res) => {
       console.log(`[ChatRoutes] Cleaning up chat ${targetChatId}`);
       const mySocket = socketService.userSockets.get(userId);
       if (mySocket) mySocket.leave(targetChatId);
-      socketService.activeChats.delete(targetChatId);
     } else {
       console.log(`[ChatRoutes] No active chat found for user ${userId} to exit`);
     }
