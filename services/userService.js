@@ -80,6 +80,21 @@ class UserService {
     const blocked_users = [...(user.blocked_users || []), blockedUserId];
     return this.updateUser(userId, { blocked_users });
   }
+
+  async updateUserInterests(userId, interests) {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ interests })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      throw error;
+    }
+    return data;
+  }
 }
 
 module.exports = new UserService();

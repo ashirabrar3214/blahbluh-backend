@@ -120,11 +120,15 @@ router.post('/exit', async (req, res) => {
   }
 });
 
-// POST /log-tags
-// A dedicated route to receive tags and print them to the server console
-router.post('/log-tags', (req, res) => {
+// POST /update-interests
+// Updates the user's interests array in the database
+router.post('/update-interests', async (req, res) => {
   try {
-    const { tags } = req.body;
+    const { userId, tags } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'Missing userId.' });
+    }
 
     // Validation: Ensure tags are provided and are in an array format
     if (!tags || !Array.isArray(tags)) {
@@ -134,17 +138,20 @@ router.post('/log-tags', (req, res) => {
       });
     }
 
-    // Log the tags to the console as requested
-    console.log('Received tags:', tags);
+    console.log(`[ChatRoutes] Updating interests for userId: ${userId}`, tags);
+
+    // Update the user's interests in the database
+    // Note: Ensure userService has an updateUserInterests(userId, tags) method
+    await userService.updateUserInterests(userId, tags);
 
     // Send a success response back to the client
     res.status(200).json({
       success: true,
-      message: 'Tags received and logged successfully.'
+      message: 'Interests updated successfully.'
     });
 
   } catch (error) {
-    console.error('Error in /log-tags:', error);
+    console.error('Error in /update-interests:', error);
     res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 });
