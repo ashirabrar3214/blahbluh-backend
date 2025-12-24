@@ -1,15 +1,21 @@
 // Service to handle Gemini API interactions
 require('dotenv').config();
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const userService = require('../services/userService');
 
+let GoogleGenerativeAI;
+try {
+  ({ GoogleGenerativeAI } = require("@google/generative-ai"));
+} catch (error) {
+  console.warn("[Gemini] Dependency '@google/generative-ai' not found. AI features disabled.");
+}
+
 const apiKey = process.env.GEMINI_API_KEY;
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+const genAI = (apiKey && GoogleGenerativeAI) ? new GoogleGenerativeAI(apiKey) : null;
 
 module.exports = {
   async generateConversationStarter(userId) {
     if (!genAI) {
-      console.warn("Gemini API key is missing.");
+      console.warn("[Gemini] Service not available (missing key or dependency).");
       return "Hello! What's on your mind?";
     }
 
