@@ -33,7 +33,7 @@ module.exports = {
       const topics = (interests && interests.length > 0) ? interests.join(', ') : 'general topics';
       console.log(`[Gemini] Topics determined: "${topics}"`);
 
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       const prompt = `Generate a short, engaging conversation starter question based on these interests: ${topics}`;
 
       console.log("[Gemini] Sending request to Google API...");
