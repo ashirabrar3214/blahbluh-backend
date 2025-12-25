@@ -74,8 +74,33 @@ module.exports = {
       const interests = await userService.getUserInterests(userId);
       const topics = interests?.length ? interests.join(", ") : "general topics";
 
-      const prompt = `Generate a short, engaging conversation starter question based on these interests: ${topics}`;
+      const prompt = `
+            You are generating a SINGLE conversation starter for a 1-on-1 chat between strangers.
 
+            Rules (mandatory):
+            - Output ONLY ONE question.
+            - Output ONLY the question text. No intro, no explanation, no emojis.
+            - Do NOT generate multiple questions.
+            - Do NOT be generic or motivational.
+            - Do NOT say things like "Sure", "Here is one", or anything similar.
+
+            Style:
+            - Make it emotionally engaging, specific, or opinionated.
+            - Reference concrete moments, experiences, pop culture, or personal reactions.
+            - The question should feel like something a real human would ask, not an AI.
+
+            User interests:
+            ${topics}
+
+            Examples of GOOD questions (do NOT repeat these):
+            - "How did you feel when Robb Stark died at the Red Wedding?"
+            - "What song instantly takes you back to the worst year of your life?"
+            - "What’s a hill you’ll die on that everyone around you disagrees with?"
+
+            Now generate ONE question.
+            `;
+
+    
       // Auto-select a model your key can actually use
       const modelPath = await getWorkingModelPath(apiKey);
 
