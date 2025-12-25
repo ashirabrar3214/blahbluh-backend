@@ -1,65 +1,107 @@
-// Service to handle Gemini API interactions
-require('dotenv').config();
-const userService = require('../services/userService');
+// routes/geminiService.js
+require("dotenv").config();
+const userService = require("../services/userService");
 
-const apiKey = process.env.GEMINI_API_KEY;
+// Cache models so we don't list them every request
+let cachedModelPath = null;
+let cachedAt = 0;
 
-const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
-    headers: { "x-goog-api-key": process.env.GEMINI_API_KEY.trim() }
-    });
-    console.log(await res.json());
+function getApiKey() {
+  return (process.env.GEMINI_API_KEY || "").trim();
+}
 
+async function listModels(apiKey) {
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+    method: "GET",
+    headers: { "x-goog-api-key": apiKey },
+  });
 
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`ListModels failed: ${res.status} ${res.statusText} - ${txt}`);
+  }
+
+  const data = await res.json();
+  return data.models || [];
+}
+
+function pickBestTextModel(models) {
+  // Only models that support generateContent
+  const usable = models.filter(
+    (m) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes("generateContent")
+  );
+
+  // Prefer flash variants (cheap/fast). If not found, take first usable.
+  const preferred =
+    usable.find((m) => /flash/i.test(m.name)) ||
+    usable.find((m) => /pro/i.test(m.name)) ||
+    usable[0];
+
+  return preferred?.name || null; // ex: "models/gemini-1.5-flash-001"
+}
+
+async function getWorkingModelPath(apiKey) {
+  // cache for 10 minutes
+  const now = Date.now();
+  if (cachedModelPath && now - cachedAt < 10 * 60 * 1000) return cachedModelPath;
+
+  const models = await listModels(apiKey);
+  const picked = pickBestTextModel(models);
+
+  if (!picked) {
+    throw new Error(
+      "No usable models returned by ListModels. Your key/project might not have Gemini API enabled or is restricted."
+    );
+  }
+
+  cachedModelPath = picked; // keep full "models/..." path
+  cachedAt = now;
+  console.log("[Gemini] Picked model:", cachedModelPath);
+  return cachedModelPath;
+}
 
 module.exports = {
   async generateConversationStarter(userId) {
     console.log(`[Gemini] generateConversationStarter called for userId: ${userId}`);
 
-    if (!process.env.GEMINI_API_KEY) {
-        console.warn("[Gemini] GEMINI_API_KEY missing.");
-        return "Hello! What's on your mind?";
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      console.warn("[Gemini] GEMINI_API_KEY missing.");
+      return "Hello! What's on your mind?";
     }
 
     try {
-        const interests = await userService.getUserInterests(userId);
-        const topics =
-        interests && interests.length > 0
-            ? interests.join(", ")
-            : "general topics";
+      const interests = await userService.getUserInterests(userId);
+      const topics = interests?.length ? interests.join(", ") : "general topics";
 
-        const prompt = `Generate a short, engaging conversation starter question based on these interests: ${topics}`;
+      const prompt = `Generate a short, engaging conversation starter question based on these interests: ${topics}`;
 
-        const response = await fetch(
-        "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
-        {
-            method: "POST",
-            headers: {
-            "Content-Type": "application/json",
-            "X-goog-api-key": process.env.GEMINI_API_KEY
-            },
-            body: JSON.stringify({
-            contents: [
-                {
-                parts: [{ text: prompt }]
-                }
-            ]
-            })
-        }
-        );
+      // Auto-select a model your key can actually use
+      const modelPath = await getWorkingModelPath(apiKey);
 
-        if (!response.ok) {
-        const err = await response.text();
-        throw new Error(err);
-        }
+      const url = `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent`;
 
-        const data = await response.json();
-        return (
-        data.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "Hello! What's on your mind?"
-        );
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`generateContent failed: ${response.status} ${response.statusText} - ${errText}`);
+      }
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Hello! What's on your mind?";
     } catch (err) {
-        console.error("[Gemini] API Error:", err.message);
-        return "Hello! What's on your mind?";
+      console.error("[Gemini] API Error:", err.message);
+      return "Hello! What's on your mind?";
     }
-}
+  },
 };
