@@ -125,7 +125,7 @@ class SocketService {
     socket.on('send-message', async (data) => {
       console.log(`[SocketService] 'send-message' received`, data);
       try {
-        const { chatId, message, userId, username, replyTo } = data;
+        const { chatId, message, userId } = data;
         
         // Store friend messages in database
         if (chatId.startsWith('friend_')) {
@@ -147,15 +147,11 @@ class SocketService {
           if (error) throw error;
           console.log(`[SocketService] Friend message saved to DB: ${savedMessage.id}`);
           
-          // Create message data with database ID
+          // Create message data with database ID, preserving other fields from client
           const messageData = {
+            ...data,
             id: savedMessage.id,
-            chatId,
-            message,
-            userId,
-            username,
             timestamp: savedMessage.created_at,
-            replyTo
           };
           
           // Send to chat room AND emit special friend message event
@@ -166,20 +162,16 @@ class SocketService {
           // Regular random chat message
           console.log(`[SocketService] Processing regular chat message for ${chatId}`);
           const messageData = {
+            ...data,
             id: Date.now(),
-            chatId,
-            message,
-            userId,
-            username,
             timestamp: new Date().toISOString(),
-            replyTo
           };
           
           io.to(chatId).emit('new-message', messageData);
           console.log(`[SocketService] Regular message emitted to room ${chatId}`);
         }
       } catch (error) {
-        console.error('Error storing friend message:', error);
+        console.error('Error storing/sending message:', error);
       }
     });
 

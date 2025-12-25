@@ -170,8 +170,6 @@ router.get('/user-interests/:userId', async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 });
-
-// GET /suggest-topic/:userId
 // Uses Gemini to suggest a conversation starter based on user interests
 router.get('/suggest-topic/:userId', async (req, res) => {
   try {
