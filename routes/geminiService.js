@@ -9,46 +9,50 @@ module.exports = {
     console.log(`[Gemini] generateConversationStarter called for userId: ${userId}`);
 
     if (!apiKey) {
-      console.warn("[Gemini] Warning: GEMINI_API_KEY is missing.");
-      return "Hello! What's on your mind?";
+        console.warn("[Gemini] GEMINI_API_KEY missing");
+        return "Hello! What's on your mind?";
     }
 
     try {
-      console.log("[Gemini] Fetching user interests...");
-      const interests = await userService.getUserInterests(userId);
-      const topics = (interests && interests.length > 0) ? interests.join(', ') : 'general topics';
-      console.log(`[Gemini] Topics determined: "${topics}"`);
+        const interests = await userService.getUserInterests(userId);
+        const topics =
+        interests && interests.length > 0
+            ? interests.join(", ")
+            : "general topics";
 
-      const prompt = `Generate a short, engaging conversation starter question based on these interests: ${topics}`;
+        const prompt = `Generate a short, engaging conversation starter question based on these interests: ${topics}`;
 
-      console.log("[Gemini] Sending request to Google API via REST...");
+        const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+            method: "POST",
+            headers: {
+            "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+            contents: [
+                {
+                parts: [{ text: prompt }]
+                }
+            ]
+            })
+        }
+        );
 
-      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-goog-api-key": apiKey
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }]
-        })
-      });
+        if (!response.ok) {
+        const err = await response.text();
+        throw new Error(err);
+        }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Hello! What's on your mind?";
-
-      console.log(`[Gemini] Success! Generated: "${text}"`);
-      return text;
-    } catch (error) {
-      console.error("[Gemini] API Error:", error.message);
-      return "Hello! What's on your mind?";
+        const data = await response.json();
+        return (
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ??
+        "Hello! What's on your mind?"
+        );
+    } catch (err) {
+        console.error("[Gemini] API Error:", err.message);
+        return "Hello! What's on your mind?";
     }
-  }
+    }
+
 };
