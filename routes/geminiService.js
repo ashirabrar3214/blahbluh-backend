@@ -4,6 +4,13 @@ const userService = require('../services/userService');
 
 const apiKey = process.env.GEMINI_API_KEY;
 
+const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+    headers: { "x-goog-api-key": process.env.GEMINI_API_KEY.trim() }
+    });
+    console.log(await res.json());
+
+
+
 module.exports = {
   async generateConversationStarter(userId) {
     console.log(`[Gemini] generateConversationStarter called for userId: ${userId}`);
