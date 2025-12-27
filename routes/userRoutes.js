@@ -122,6 +122,59 @@ router.get('/generate-user-id', async (req, res) => {
   }
 });
 
+router.put('/:userId/pfp', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { pfpLink } = req.body;
+
+    if (!pfpLink) {
+      return res.status(400).json({ error: 'pfpLink is required' });
+    }
+
+    // Update the user and select the updated row to confirm it exists
+    const { error } = await supabase
+      .from('users')
+      .update({ pfp: pfpLink })
+      .eq('id', userId)
+      .select('id')
+      .single();
+
+    if (error) {
+      // .single() will cause an error if the user_id does not exist
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log(`[USER] Updated PFP for user ${userId}`);
+    res.json({ success: true, message: 'Profile picture updated successfully.' });
+
+  } catch (err) {
+    console.error('Error updating PFP:', err);
+    res.status(500).json({ error: 'Failed to update profile picture' });
+  }
+});
+
+router.get('/:userId/pfp', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('pfp')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      // .single() throws an error if no user is found
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ pfpLink: data.pfp });
+  } catch (err) {
+    console.error('Error getting PFP:', err);
+    res.status(500).json({ error: 'Failed to retrieve profile picture' });
+  }
+});
+
 router.get('/:userId', async (req, res) => {
   try {
     const user = await userService.getUser(req.params.userId);
