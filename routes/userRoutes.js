@@ -308,7 +308,23 @@ router.post('/:userId/unblock', async (req, res) => {
       return res.status(400).json({ error: 'blockedUserId is required' });
     }
 
-    await friendService.unblockUser(userId, blockedUserId);
+    // Fetch the current user's blocked list
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('blocked_users')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const blockedUsers = user.blocked_users || [];
+    const newBlockedUsers = blockedUsers.filter(id => id !== blockedUserId);
+
+    const { error: updateError } = await supabase.from('users').update({ blocked_users: newBlockedUsers }).eq('id', userId);
+
+    if (updateError) throw updateError;
 
     console.log(`[USER] User ${userId} unblocked user ${blockedUserId}`);
     res.json({ success: true, message: 'User unblocked successfully.' });
