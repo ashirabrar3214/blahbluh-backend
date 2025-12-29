@@ -298,4 +298,50 @@ router.post('/:userId/block', async (req, res) => {
   }
 });
 
+router.post('/:userId/unblock', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { blockedUserId } = req.body;
+
+    if (!blockedUserId) {
+      return res.status(400).json({ error: 'blockedUserId is required' });
+    }
+
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('blocked_users')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const blockedUsers = user.blocked_users || [];
+    const newBlockedUsers = blockedUsers.filter(id => id !== blockedUserId);
+
+    const { error: updateError } = await supabase.from('users').update({ blocked_users: newBlockedUsers }).eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    console.log(`[USER] User ${userId} unblocked user ${blockedUserId}`);
+    res.json({ success: true, message: 'User unblocked successfully.' });
+  } catch (error) {
+    console.error('Error unblocking user:', error);
+    res.status(500).json({ error: 'Failed to unblock user' });
+  }
+});
+
+router.delete('/:userId/friends/:friendId', async (req, res) => {
+  try {
+    const { userId, friendId } = req.params;
+    const user = await userService.getUser(userId);
+    const friends = (user.friends || []).filter(id => id !== friendId);
+    const updatedUser = await userService.updateUser(userId, { friends });
+    res.json(updatedUser);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
