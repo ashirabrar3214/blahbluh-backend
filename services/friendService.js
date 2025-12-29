@@ -12,7 +12,7 @@ class FriendService {
         .eq('from_user_id', fromUserId)
         .eq('to_user_id', toUserId)
         .eq('status', 'pending')
-        .single();
+        .maybeSingle();
 
       console.log('📄 Existing request check result:', { existing, checkError });
 
@@ -59,13 +59,17 @@ class FriendService {
       .select('*')
       .eq('id', requestId)
       .eq('to_user_id', userId)
-      .single();
+      .maybeSingle();
 
     console.log('📄 Friend request data:', { request, fetchError });
 
     if (fetchError) {
       console.error('❌ Error fetching friend request:', fetchError);
       throw fetchError;
+    }
+
+    if (!request) {
+      throw new Error('Friend request not found');
     }
 
     // Update request status

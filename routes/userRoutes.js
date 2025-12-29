@@ -174,15 +174,16 @@ router.put('/:userId/pfp', async (req, res) => {
     }
 
     // Update the user and select the updated row to confirm it exists
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .update({ pfp: pfpLink })
       .eq('id', userId)
       .select('id')
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      // .single() will cause an error if the user_id does not exist
+    if (error) throw error;
+
+    if (!data) {
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -203,10 +204,9 @@ router.get('/:userId/pfp', async (req, res) => {
       .from('users')
       .select('pfp')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      // .single() throws an error if no user is found
+    if (error || !data) {
       return res.status(404).json({ error: 'User not found' });
     }
 
@@ -272,7 +272,7 @@ router.post('/:userId/block', async (req, res) => {
       .from('users')
       .select('blocked_users')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !user) {
       return res.status(404).json({ error: 'User not found' });
@@ -313,7 +313,7 @@ router.post('/:userId/unblock', async (req, res) => {
       .from('users')
       .select('blocked_users')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (fetchError || !user) {
       return res.status(404).json({ error: 'User not found' });
