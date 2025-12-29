@@ -214,14 +214,88 @@ router.post('/:userId/friends', async (req, res) => {
 
 router.post('/:userId/block', async (req, res) => {
   try {
+    const { userId } = req.params;
     const { blockedUserId } = req.body;
-    const user = await userService.blockUser(req.params.userId, blockedUserId);
-    res.json(user);
+
+    if (!blockedUserId) {
+      return res.status(400).json({ error: 'blockedUserId is required' });
+    }
+
+    if (userId === blockedUserId) {
+      return res.status(400).json({ error: 'Cannot block yourself' });
+    }
+
+    // Fetch the current user's blocked list
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('blocked_users')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const blockedUsers = user.blocked_users || [];
+
+    // Add the new user to the block list if not already present
+    if (blockedUsers.includes(blockedUserId)) {
+      return res.json({ success: true, message: 'User already blocked.' });
+    }
+
+    const newBlockedUsers = [...blockedUsers, blockedUserId];
+
+    const { error: updateError } = await supabase.from('users').update({ blocked_users: newBlockedUsers }).eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    console.log(`[USER] User ${userId} blocked user ${blockedUserId}`);
+    res.json({ success: true, message: 'User blocked successfully.' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error blocking user:', error);
+    res.status(500).json({ error: 'Failed to block user' });
   }
 });
 
+router.get('/is-blocked', async (req, res) => {
+  try {
+    const { blockerUsername, blockedUsername } = req.query;
 
+    if (!blockerUsername || !blockedUsername) {
+      return res.status(400).json({ error: 'Both blockerUsername and blockedUsername query parameters are required.' });
+    }
+
+    if (blockerUsername === blockedUsername) {
+      // A user cannot block themselves, so the status is always false.
+      return res.json({ isBlocked: false });
+    }
+
+    // Fetch both users in a single query for efficiency
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('id, username, blocked_users')
+      .in('username', [blockerUsername, blockedUsername]);
+
+    if (usersError) throw usersError;
+
+    const blocker = users.find(u => u.username === blockerUsername);
+    const blocked = users.find(u => u.username === blockedUsername);
+
+    if (!blocker) {
+      return res.status(404).json({ error: `User '${blockerUsername}' not found.` });
+    }
+    if (!blocked) {
+      return res.status(404).json({ error: `User '${blockedUsername}' not found.` });
+    }
+
+    const blockedUsersList = blocker.blocked_users || [];
+    const isBlocked = blockedUsersList.includes(blocked.id);
+
+    res.json({ isBlocked });
+  } catch (error) {
+    console.error('Error checking block status:', error);
+    res.status(500).json({ error: 'Failed to check block status' });
+  }
+});
 
 module.exports = router;
