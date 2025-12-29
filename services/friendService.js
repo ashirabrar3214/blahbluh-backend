@@ -127,6 +127,21 @@ class FriendService {
     return data.map(f => f.friend);
   }
 
+  async removeFriend(userId, friendId) {
+    console.log('Removing friend:', friendId, 'for user:', userId);
+    
+    const { data, error } = await supabase
+      .from('friends')
+      .delete()
+      .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`);
+
+    if (error) {
+      console.error('Error removing friend:', error);
+      throw error;
+    }
+    return data;
+  }
+
   async blockUser(userId, blockedUserId) {
     const { data, error } = await supabase
       .from('blocked_users')
@@ -135,6 +150,19 @@ class FriendService {
         blocked_user_id: blockedUserId,
         created_at: new Date().toISOString()
       });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async unblockUser(userId, blockedUserId) {
+    console.log('Unblocking user:', blockedUserId, 'for user:', userId);
+    
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .delete()
+      .eq('user_id', userId)
+      .eq('blocked_user_id', blockedUserId);
 
     if (error) throw error;
     return data;
