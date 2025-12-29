@@ -1,5 +1,6 @@
 const express = require('express');
 const userService = require('../services/userService');
+const friendService = require('../services/friendService');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
@@ -307,22 +308,7 @@ router.post('/:userId/unblock', async (req, res) => {
       return res.status(400).json({ error: 'blockedUserId is required' });
     }
 
-    const { data: user, error: fetchError } = await supabase
-      .from('users')
-      .select('blocked_users')
-      .eq('id', userId)
-      .single();
-
-    if (fetchError || !user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const blockedUsers = user.blocked_users || [];
-    const newBlockedUsers = blockedUsers.filter(id => id !== blockedUserId);
-
-    const { error: updateError } = await supabase.from('users').update({ blocked_users: newBlockedUsers }).eq('id', userId);
-
-    if (updateError) throw updateError;
+    await friendService.unblockUser(userId, blockedUserId);
 
     console.log(`[USER] User ${userId} unblocked user ${blockedUserId}`);
     res.json({ success: true, message: 'User unblocked successfully.' });
@@ -335,12 +321,11 @@ router.post('/:userId/unblock', async (req, res) => {
 router.delete('/:userId/friends/:friendId', async (req, res) => {
   try {
     const { userId, friendId } = req.params;
-    const user = await userService.getUser(userId);
-    const friends = (user.friends || []).filter(id => id !== friendId);
-    const updatedUser = await userService.updateUser(userId, { friends });
-    res.json(updatedUser);
+    await friendService.removeFriend(userId, friendId);
+    res.json({ success: true, message: 'Friend removed successfully' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Error removing friend:', error);
+    res.status(500).json({ error: 'Failed to remove friend' });
   }
 });
 
