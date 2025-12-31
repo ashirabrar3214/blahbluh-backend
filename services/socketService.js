@@ -104,6 +104,17 @@ class SocketService {
         });
         partnerSocket.leave(chatId);
         console.log(`[SocketService] Partner ${partnerId} left room ${chatId}`);
+
+        // If we should requeue the partner, WE MUST DO IT HERE manually
+        if (shouldRequeuePartner) {
+          console.log(`[SocketService] Auto-requeueing partner ${partnerId} after skip`);
+          
+          // Add partner to queue
+          const partnerRes = await this.joinQueue(partnerId, partnerSocket.id, queue);
+          
+          // Tell partner they are queued (so their UI can switch to "Searching...")
+          partnerSocket.emit('queue-joined', partnerRes);
+        }
       }
 
       // Requeue skipper unless they explicitly exited (Home)
