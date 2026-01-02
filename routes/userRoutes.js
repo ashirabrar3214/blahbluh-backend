@@ -167,32 +167,41 @@ router.get('/is-blocked', async (req, res) => {
 router.put('/:userId/pfp', async (req, res) => {
   try {
     const { userId } = req.params;
-    const { pfpLink } = req.body;
 
-    if (!pfpLink) {
-      return res.status(400).json({ error: 'pfpLink is required' });
+    // accept any of these from frontend
+    const { pfpLink, pfp_background, bg } = req.body;
+
+    const backgroundLink = bg || pfp_background;
+
+    if (!pfpLink && !backgroundLink) {
+      return res.status(400).json({ error: 'pfpLink or background is required' });
     }
 
-    // Update the user and select the updated row to confirm it exists
+    const updates = {};
+    if (pfpLink) updates.pfp = pfpLink;
+    if (backgroundLink) updates["pfp-background"] = backgroundLink; // <-- IMPORTANT
+
     const { data, error } = await supabase
       .from('users')
-      .update({ pfp: pfpLink })
+      .update(updates)
       .eq('id', userId)
-      .select('id')
+      .select('id, pfp, "pfp-background"')
       .maybeSingle();
 
     if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'User not found' });
 
-    if (!data) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    console.log(`[USER] Updated PFP assets for user ${userId}`);
 
-    console.log(`[USER] Updated PFP for user ${userId}`);
-    res.json({ success: true, message: 'Profile picture updated successfully.' });
-
+    res.json({
+      success: true,
+      pfp: data.pfp,
+      // return a friendly key name to frontend:
+      pfp_background: data["pfp-background"],
+    });
   } catch (err) {
-    console.error('Error updating PFP:', err);
-    res.status(500).json({ error: 'Failed to update profile picture' });
+    console.error('Error updating PFP assets:', err);
+    res.status(500).json({ error: 'Failed to update profile assets' });
   }
 });
 
@@ -202,18 +211,19 @@ router.get('/:userId/pfp', async (req, res) => {
 
     const { data, error } = await supabase
       .from('users')
-      .select('pfp')
+      .select('pfp, "pfp-background"')
       .eq('id', userId)
       .maybeSingle();
 
-    if (error || !data) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (error || !data) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ pfpLink: data.pfp });
+    res.json({
+      pfpLink: data.pfp,
+      pfp_background: data["pfp-background"],
+    });
   } catch (err) {
-    console.error('Error getting PFP:', err);
-    res.status(500).json({ error: 'Failed to retrieve profile picture' });
+    console.error('Error getting PFP assets:', err);
+    res.status(500).json({ error: 'Failed to retrieve profile assets' });
   }
 });
 
