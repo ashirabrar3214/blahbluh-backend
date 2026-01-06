@@ -4,6 +4,20 @@ const friendService = require('../services/friendService');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
+const { v5: uuidv5, validate: uuidValidate } = require('uuid');
+
+// IMPORTANT: keep this EXACT constant forever or your IDs change.
+const FIREBASE_UID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+// Automatically normalize :userId for ALL routes
+router.param('userId', (req, res, next, userId) => {
+  if (!uuidValidate(userId)) {
+    // It's probably a Firebase UID -> convert to deterministic UUID
+    req.params.userId = uuidv5(userId, FIREBASE_UID_NAMESPACE);
+  }
+  next();
+});
+
 router.post('/review', async (req, res) => {
   try {
     const { reviewerId, reviewedUserId, rating } = req.body;
@@ -280,7 +294,10 @@ router.get('/:userId', async (req, res) => {
 
 router.put('/:userId', async (req, res) => {
   try {
-    const user = await userService.updateUser(req.params.userId, req.body);
+    const updates = { ...(req.body || {}) };
+    delete updates.isLogin; // <-- FIX for PGRST204
+
+    const user = await userService.updateUser(req.params.userId, updates);
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
