@@ -294,10 +294,38 @@ router.get('/:userId', async (req, res) => {
 
 router.put('/:userId', async (req, res) => {
   try {
-    const updates = { ...(req.body || {}) };
-    delete updates.isLogin; // <-- FIX for PGRST204
+    const { userId } = req.params;
 
-    const user = await userService.updateUser(req.params.userId, updates);
+    // ONLY allow real DB columns (prevents password/uid/isLogin/etc from breaking updates)
+    const allowed = new Set([
+      'username',
+      'gender',
+      'country',
+      'age',
+      'email',
+      'pfp',
+      'interests',
+      'friends',
+      'blocked_users',
+      'total_rating',
+      'total_rating_count',
+      'is_reported',
+    ]);
+
+    const updates = {};
+    for (const [key, value] of Object.entries(req.body || {})) {
+      if (!allowed.has(key)) continue;
+
+      // make age an integer (Supabase integer column won't like weird strings)
+      if (key === 'age') {
+        updates.age = value === '' || value == null ? null : Number(value);
+        continue;
+      }
+
+      updates[key] = value;
+    }
+
+    const user = await userService.updateUser(userId, updates);
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
