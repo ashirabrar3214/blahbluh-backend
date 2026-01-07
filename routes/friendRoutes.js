@@ -78,19 +78,34 @@ router.get('/friend-chats/:userId', async (req, res) => {
   }
 });
 
+// routes/friendRoutes.js
+
 router.get('/friend-chat-messages/:chatId', async (req, res) => {
   try {
     const { chatId } = req.params;
+    const { before } = req.query; // <--- 1. Get the cursor from query params
     
-    const { data: messages, error } = await supabase
+    let query = supabase
       .from('friend_messages')
       .select('*')
       .eq('chat_id', chatId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false }) // <--- 2. CRITICAL: Fetch Newest First
       .limit(50);
       
+    // 3. If we have a cursor, fetch messages OLDER than that timestamp
+    if (before) {
+      query = query.lt('created_at', before);
+    }
+
+    const { data: messages, error } = await query;
+      
     if (error) throw error;
-    res.json(messages || []);
+
+    // 4. Reverse them back so they are Chronological (Oldest -> Newest) for the UI
+    // If we don't do this, the UI will show the chat backwards.
+    const orderedMessages = messages ? messages.reverse() : [];
+
+    res.json(orderedMessages);
   } catch (error) {
     console.error('❌ Chat messages error:', error);
     res.json([]);
