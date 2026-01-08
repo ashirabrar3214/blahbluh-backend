@@ -6,6 +6,9 @@ const userService = require("../services/userService");
 let cachedModelPath = null;
 let cachedAt = 0;
 
+// Store unused prompts: userId -> [prompt, prompt, ...]
+const promptCache = new Map();
+
 function getApiKey() {
   return (process.env.GEMINI_API_KEY || "").trim();
 }
@@ -63,6 +66,16 @@ async function getWorkingModelPath(apiKey) {
 module.exports = {
   async generateConversationStarter(userId) {
     console.log(`[Gemini] generateConversationStarter called for userId: ${userId}`);
+
+    // 1. Check cache
+    if (userId && promptCache.has(userId)) {
+      const cached = promptCache.get(userId);
+      if (cached && cached.length > 0) {
+        const next = cached.shift();
+        console.log(`[Gemini] Returning cached prompt. Remaining: ${cached.length}`);
+        return next;
+      }
+    }
 
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -125,16 +138,25 @@ module.exports = {
 
       try {
         const parsed = JSON.parse(text);
-        const prompts = Array.isArray(parsed?.prompts) ? parsed.prompts : ["Hello! What's on your mind?"];
-        console.log(prompts);
-        return prompts;
+        const prompts = Array.isArray(parsed?.prompts) ? parsed.prompts : [];
+        
+        if (prompts.length === 0) {
+          return "Hello! What's on your mind?";
+        }
+
+        const first = prompts.shift();
+        if (userId) {
+          promptCache.set(userId, prompts);
+        }
+        console.log(`[Gemini] Generated ${prompts.length + 1} prompts. Returning 1.`);
+        return first;
       } catch (e) {
         console.error("[Gemini] JSON Parse Error:", e);
-        return ["Hello! What's on your mind?"];
+        return "Hello! What's on your mind?";
       }
     } catch (err) {
       console.error("[Gemini] API Error:", err.message);
-      return ["Hello! What's on your mind?"];
+      return "Hello! What's on your mind?";
     }
   },
 };
