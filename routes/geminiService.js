@@ -196,11 +196,17 @@ Use at least 3 different formats across the 5 prompts:
 
         let parsed;
         try {
-          parsed = JSON.parse(text);
+          const cleanText = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+          parsed = JSON.parse(cleanText);
         } catch (e) {
+          console.error(`[Gemini] JSON parse failed (attempt ${attempts}):`, e.message);
           continue;
         }
-        const candidates = Array.isArray(parsed?.prompts) ? parsed.prompts.map(s => String(s).trim()) : [];
+        const candidates = Array.isArray(parsed?.prompts) 
+          ? parsed.prompts.map(s => String(s).trim()) 
+          : Array.isArray(parsed) 
+            ? parsed.map(s => String(s).trim()) 
+            : [];
         if (isValid(candidates)) {
           return candidates;
         }
