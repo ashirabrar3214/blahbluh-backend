@@ -162,7 +162,67 @@ module.exports = {
           "x-goog-api-key": apiKey,
         },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          systemInstruction: {
+            role: "system",
+            parts: [
+              {
+                text: `
+You write 1-on-1 icebreakers for strangers. They must feel human, punchy, playful, slightly chaotic.
+
+OUTPUT:
+- Return EXACTLY 5 prompts joined by "|||".
+- No extra text, no newlines, no numbering, no bullets.
+
+STYLE:
+- Prompts can be questions OR interactive statements (MCQ, rank, dare, fill-blank).
+- Try NOT to start with What/Why/Who/Where/When.
+- 6–16 words each.
+
+ANTI-BORING RULES:
+- DO NOT include labels like "Hot take:", "Guilty pleasure:", "Dropped into:".
+- DO NOT use vague nouns like "a movie", "a game", "any video game", "classic thriller", "a song".
+- DO NOT do TED-talk / therapy vibes (ban: dream, purpose, grateful, inspire, motivation, childhood, journey).
+- Max 2 fill-in-the-blank prompts total.
+
+SPECIFICITY:
+- Each prompt MUST include at least one concrete anchor from the interests:
+  title/character/artist/game/franchise/genre/term.
+- If interests are broad, pick a famous specific example and name it.
+- Avoid clichés and “favorite memory” framing.
+
+VARIETY:
+Use at least 3 different formats across the 5 prompts:
+- Pick-one-and-defend (A/B/C)
+- Rank 3 (no ties)
+- Agree/Disagree statement
+- Worst take / cringe test / guilty pleasure
+- Scenario (“stuck 24h with X or Y”)
+- Mini-date choice
+- Playful dare (10 words)
+- CAH-safe (fake headline, villain origin, worst advice, confession)
+        `.trim(),
+              },
+            ],
+          },
+
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: `User interests: ${topics}
+Generate 5 prompts now.`,
+                },
+              ],
+            },
+          ],
+
+          generationConfig: {
+            temperature: 1.1,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 220,
+          },
         }),
       });
 
