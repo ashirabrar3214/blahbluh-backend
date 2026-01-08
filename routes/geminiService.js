@@ -171,10 +171,31 @@ Use at least 3 different formats across the 5 prompts:
           ],
 
           generationConfig: {
-            temperature: 1.1,
+            temperature: 1.05,
             topP: 0.95,
-            topK: 40,
-            maxOutputTokens: 1000,
+
+            // IMPORTANT: give it enough room for 5 prompts
+            maxOutputTokens: 600,
+
+            // Structured output (real JSON mode)
+            responseMimeType: "application/json",
+            responseJsonSchema: {
+              type: "object",
+              properties: {
+                prompts: {
+                  type: "array",
+                  minItems: 5,
+                  maxItems: 5,
+                  items: {
+                    type: "string",
+                    minLength: 12,
+                    maxLength: 140
+                  }
+                }
+              },
+              required: ["prompts"],
+              additionalProperties: false
+            }
           },
           }),
         });
@@ -185,29 +206,23 @@ Use at least 3 different formats across the 5 prompts:
         }
 
         const data = await response.json();
-        console.log("[Gemini] candidateParts:", JSON.stringify(data?.candidates?.[0]?.content?.parts, null, 2));
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        const candidate = data?.candidates?.[0];
+        const parts = candidate?.content?.parts ?? [];
+        const text = parts.map(p => p?.text ?? "").join("");
 
-        console.log(`[Gemini] textLen(attempt ${attempts}):`, text?.length);
+        console.log(`[Gemini] finishReason(attempt ${attempts}):`, candidate?.finishReason);
         console.log(`[Gemini] RAW(attempt ${attempts}):`, JSON.stringify(text)); // shows \n, \r, etc
-        console.log(`[Gemini] TAIL(attempt ${attempts}):`, JSON.stringify(text?.slice(-120)));
-        process.stdout.write(`[Gemini] FULL(attempt ${attempts}):\n${text}\n---\n`);
-        if (!text) continue;
 
         let parsed;
         try {
-          const match = text.match(/\{[\s\S]*\}/);
-          const cleanText = match ? match[0] : text;
-          parsed = JSON.parse(cleanText);
+          parsed = JSON.parse(text);
         } catch (e) {
           console.error(`[Gemini] JSON parse failed (attempt ${attempts}):`, e.message);
           continue;
         }
-        const candidates = Array.isArray(parsed?.prompts) 
-          ? parsed.prompts.map(s => String(s).trim()) 
-          : Array.isArray(parsed) 
-            ? parsed.map(s => String(s).trim()) 
-            : [];
+
+        const candidates = Array.isArray(parsed?.prompts) ? parsed.prompts : [];
         if (isValid(candidates)) {
           return candidates;
         }
