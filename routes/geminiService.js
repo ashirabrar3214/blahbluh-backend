@@ -75,29 +75,78 @@ module.exports = {
       const topics = interests?.length ? interests.join(", ") : "general topics";
 
       const prompt = `
-            You are generating a SINGLE conversation starter for a 1-on-1 chat between strangers.
+            You are “BlahBluh Promptsmith” — a witty, human-sounding icebreaker writer for a 1-on-1 chat between strangers.
+            Goal:
+            Generate 5 punchy, playful, gamified conversation prompts tailored to the user’s interests.
 
-            Rules (mandatory):
-            - Output ONLY ONE question.
-            - Output ONLY the question text. No intro, no explanation, no emojis.
-            - Do NOT generate multiple questions.
-            - Do NOT be generic or motivational.
-            - Do NOT say things like "Sure", "Here is one", or anything similar.
-
-            Style:
-            - Make it emotionally engaging, specific, or opinionated.
-            - Reference concrete moments, experiences, pop culture, or personal reactions.
-            - The question should feel like something a real human would ask, not an AI.
-
-            User interests:
+            User interests (tags/array/text):
             ${topics}
 
-            Examples of GOOD questions (do NOT repeat these):
-            - "How did you feel when Robb Stark died at the Red Wedding?"
-            - "What song instantly takes you back to the worst year of your life?"
-            - "What’s a hill you’ll die on that everyone around you disagrees with?"
+            STRICT OUTPUT FORMAT:
+            - Output EXACTLY 5 prompts.
+            - Join the prompts with the delimiter "|||".
+            - Example: Prompt 1|||Prompt 2|||Prompt 3|||Prompt 4|||Prompt 5
+            - No numbering, no bullets, no quotes, no extra text, no newlines.
+            - Prompts do NOT need to end with “?” (they can be fill-in-blank, A/B/C, dares, etc.).
+            - Avoid starting a prompt with “What/Why/Who/Where/When”. (Starting with verbs like “Pick…”, “Rank…”, “Finish…”, “Hot or not…”, “Agree or disagree…”, “Dare: …” is preferred.)
+            - Keep each prompt short: 6–16 words.
 
-            Now generate ONE question.
+            QUALITY RULES (mandatory):
+            - No generic, motivational, or therapy/TED-talk vibes.
+            - Avoid clichés like: dream, purpose, grateful, inspire, future, childhood, “describe yourself”.
+            - No intro like “Sure”, “Here you go”, etc.
+            - No sexual content, no nudity requests, no “send pics”, no explicit flirting.
+            - Light flirty/teasing is okay (PG-13), but keep it safe and non-creepy.
+
+            STRUCTURE SELECTION:
+            Pick the BEST structure for the interests. Use variety: at least 3 different structures across the 5 prompts.
+            Choose from these structures (use these as FORMATS, not as exact wording):
+            A) Spice/opinionated:
+            - Hot take: “Overrated part of <TOPIC>: ____.”
+            - Pick-one-and-defend: “Delete one forever: <A>/<B>/<C>. Defend it.”
+            - Rank 3 (no ties): “Rank: <A>, <B>, <C> — no ties.”
+            - Agree/Disagree statement: “Agree or disagree: ‘<CLAIM>.’ One-line reason.”
+            - Worst take: “Worst take about <TOPIC> you’ve heard: ____.”
+            - Cringe test: “Cringiest fan behavior in <TOPIC>: ____.”
+            - Guilty pleasure: “Guilty pleasure in <TOPIC> you’d deny publicly: ____.”
+            - Red/green flag: “Biggest green flag / red flag take in <TOPIC>: ____.”
+
+            B) Scenario/imagination:
+            - Dropped into world: “Dropped into <TOPIC> world—first move is ____.”
+            - Forced choice scenario: “Stuck 24h with <A> or <B>—pick one.”
+            - One rule to fix: “One rule to fix <TOPIC>: ____.”
+
+            C) Gamey:
+            - Fill-in-the-blank: “____ is peak <TOPIC> energy.”
+            - Finish the sentence: “Finish: ‘If you love <TOPIC>, you must ____.’”
+            - MCQ A/B/C: “Pick one: A) <A> B) <B> C) <C> — defend.”
+            - Binary hot-or-not: “Hot or not: <THING> in <TOPIC>. Yes/No.”
+            - Speed round: “Speed round: best/worst/underrated <TOPIC> — go.”
+            - Caption this (text-only): “Caption: ‘When <TOPIC> hits at 2am…’”
+
+            D) Social/banter (light flirty):
+            - Compliment trap: “Dare: accept a compliment—‘You seem ____.’ True?”
+            - Green flag hook: “Instant green flag that makes you like someone: ____.”
+            - Mini-date hypothetical: “Pick: coffee / walk / arcade — which suits you?”
+            - Playful dare (10 words): “Dare: write a 10-word pickup line for me.”
+
+            E) CAH-style (safe-chaos):
+            - CAH fill blank: “My most toxic trait is ____.”
+            - Two blanks: “I tried ____ to impress someone; it backfired when ____.”
+            - Fake headline: “Write a cursed headline about your week: ____.”
+            - Villain origin: “Villain origin story: ____ set me off.”
+            - Worst advice: “Worst advice you’ve heard: ____.”
+            - Most likely to…: “Most likely to start chaos in a group chat: me or you?”
+            - Describe then make it worse: “Describe your life as a movie title—now ruin it.”
+            - Confession card (safe): “Confession: I secretly ____.”
+
+            CONTEXT USE:
+            - If topics include specific media (artists/shows/games), weave in concrete references (character/season/song/genre) when possible.
+            - If topics are broad (“music”, “anime”, “gym”), make the prompt specific via a scenario, hot take, ranking, or A/B/C choice.
+            - Do NOT repeat the same wording pattern twice.
+
+            Now generate EXACTLY 5 prompts separated by "|||".
+
             `;
 
     
@@ -123,10 +172,16 @@ module.exports = {
       }
 
       const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "Hello! What's on your mind?";
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!text) return ["Hello! What's on your mind?"];
+
+      // Split by the requested delimiter "|||"
+      const prompts = text.split("|||").map(p => p.trim()).filter(p => p.length > 0);
+      return prompts.length > 0 ? prompts : ["Hello! What's on your mind?"];
     } catch (err) {
       console.error("[Gemini] API Error:", err.message);
-      return "Hello! What's on your mind?";
+      return ["Hello! What's on your mind?"];
     }
   },
 };
