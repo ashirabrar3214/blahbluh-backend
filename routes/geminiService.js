@@ -174,7 +174,7 @@ Use at least 3 different formats across the 5 prompts:
             temperature: 1.1,
             topP: 0.95,
             topK: 40,
-              maxOutputTokens: 320,
+            maxOutputTokens: 1000,
           },
           }),
         });
@@ -196,7 +196,8 @@ Use at least 3 different formats across the 5 prompts:
 
         let parsed;
         try {
-          const cleanText = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+          const match = text.match(/\{[\s\S]*\}/);
+          const cleanText = match ? match[0] : text;
           parsed = JSON.parse(cleanText);
         } catch (e) {
           console.error(`[Gemini] JSON parse failed (attempt ${attempts}):`, e.message);
