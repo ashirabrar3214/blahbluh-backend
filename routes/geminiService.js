@@ -178,12 +178,16 @@ Use at least 3 different formats across the 5 prompts:
         }
 
         const data = await response.json();
+        console.log("[Gemini] candidateParts:", JSON.stringify(data?.candidates?.[0]?.content?.parts, null, 2));
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-        console.log(`[Gemini] Generated text (attempt ${attempts}):`, text);
+        console.log(`[Gemini] textLen(attempt ${attempts}):`, text?.length);
+        console.log(`[Gemini] RAW(attempt ${attempts}):`, JSON.stringify(text)); // shows \n, \r, etc
+        console.log(`[Gemini] TAIL(attempt ${attempts}):`, JSON.stringify(text?.slice(-120)));
+        process.stdout.write(`[Gemini] FULL(attempt ${attempts}):\n${text}\n---\n`);
         if (!text) continue;
 
-        const candidates = text.split("|||").map(p => p.trim()).filter(Boolean);
+        const candidates = text.split(/\|{3,}/).map(p => p.trim()).filter(Boolean);
         if (isValid(candidates)) {
           return candidates;
         }
