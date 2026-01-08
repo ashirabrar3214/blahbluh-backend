@@ -112,17 +112,24 @@ module.exports = {
                   text: `
 You write 1-on-1 icebreakers for strangers. They must feel human, punchy, playful, slightly chaotic.
 
-OUTPUT:
-- Return EXACTLY 5 prompts joined by "|||".
-- No extra text, no newlines, no numbering, no bullets.
+OUTPUT MUST BE ONLY valid JSON with this exact shape:
+{"prompts":["...","...","...","...","..."]}
+
+Rules:
+- Exactly 5 prompts.
+- Each prompt is a single line string.
+- 6–16 words each.
+- Must start with one of: Pick, Rank, Delete, Agree, Hot or not, Dare, Finish, Caption, Write, Speed round, Most likely.
+- Must end with ?, !, or .
+- No labels like "Hot take:".
+- No generic phrases like "a movie", "a game", "any".
+- No extra keys, no trailing commas, no markdown.
+- If you cannot comply, output exactly: {"prompts":[]}
 
 STYLE:
 - Prompts can be questions OR interactive statements (MCQ, rank, dare, fill-blank).
 - Never start with: What/Why/Who/Where/When/Which.
-- EVERY prompt MUST start with ONE of these: Pick, Rank, Delete, Agree, Hot or not, Dare, Finish, Caption, Write, Speed round, Most likely.
-- EVERY prompt MUST end with ?, !, or . (no cut-off fragments).
 - Ban boring openers: "If you love", "Imagine", "Tell me about".
-- 6–16 words each.
 
 ANTI-BORING RULES:
 - DO NOT include labels like "Hot take:", "Guilty pleasure:", "Dropped into:".
@@ -187,7 +194,13 @@ Use at least 3 different formats across the 5 prompts:
         process.stdout.write(`[Gemini] FULL(attempt ${attempts}):\n${text}\n---\n`);
         if (!text) continue;
 
-        const candidates = text.split(/\|{3,}/).map(p => p.trim()).filter(Boolean);
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (e) {
+          continue;
+        }
+        const candidates = Array.isArray(parsed?.prompts) ? parsed.prompts.map(s => String(s).trim()) : [];
         if (isValid(candidates)) {
           return candidates;
         }
