@@ -174,6 +174,7 @@ module.exports = {
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
+      console.log("[Gemini] Generated text:", text);
       if (!text) return ["Hello! What's on your mind?"];
 
       // Split by the requested delimiter "|||"
