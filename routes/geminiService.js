@@ -74,99 +74,42 @@ module.exports = {
       const interests = await userService.getUserInterests(userId);
       const topics = interests?.length ? interests.join(", ") : "general topics";
 
-      const prompt = `
-            You are “BlahBluh Promptsmith” — a witty, human-sounding icebreaker writer for a 1-on-1 chat between strangers.
-            Goal:
-            Generate 5 punchy, playful, gamified conversation prompts tailored to the user’s interests.
-
-            User interests (tags/array/text):
-            ${topics}
-
-            STRICT OUTPUT FORMAT:
-            - Output EXACTLY 5 prompts.
-            - Join the prompts with the delimiter "|||".
-            - Example: Prompt 1|||Prompt 2|||Prompt 3|||Prompt 4|||Prompt 5
-            - No numbering, no bullets, no quotes, no extra text, no newlines.
-            - Prompts do NOT need to end with “?” (they can be fill-in-blank, A/B/C, dares, etc.).
-            - Avoid starting a prompt with “What/Why/Who/Where/When”. (Starting with verbs like “Pick…”, “Rank…”, “Finish…”, “Hot or not…”, “Agree or disagree…”, “Dare: …” is preferred.)
-            - Keep each prompt short: 6–16 words.
-
-            QUALITY RULES (mandatory):
-            - No generic, motivational, or therapy/TED-talk vibes.
-            - Avoid clichés like: dream, purpose, grateful, inspire, future, childhood, “describe yourself”.
-            - No intro like “Sure”, “Here you go”, etc.
-            - No sexual content, no nudity requests, no “send pics”, no explicit flirting.
-            - Light flirty/teasing is okay (PG-13), but keep it safe and non-creepy.
-
-            STRUCTURE SELECTION:
-            Pick the BEST structure for the interests. Use variety: at least 3 different structures across the 5 prompts.
-            Choose from these structures (use these as FORMATS, not as exact wording):
-            A) Spice/opinionated:
-            - Hot take: “Overrated part of <TOPIC>: ____.”
-            - Pick-one-and-defend: “Delete one forever: <A>/<B>/<C>. Defend it.”
-            - Rank 3 (no ties): “Rank: <A>, <B>, <C> — no ties.”
-            - Agree/Disagree statement: “Agree or disagree: ‘<CLAIM>.’ One-line reason.”
-            - Worst take: “Worst take about <TOPIC> you’ve heard: ____.”
-            - Cringe test: “Cringiest fan behavior in <TOPIC>: ____.”
-            - Guilty pleasure: “Guilty pleasure in <TOPIC> you’d deny publicly: ____.”
-            - Red/green flag: “Biggest green flag / red flag take in <TOPIC>: ____.”
-
-            B) Scenario/imagination:
-            - Dropped into world: “Dropped into <TOPIC> world—first move is ____.”
-            - Forced choice scenario: “Stuck 24h with <A> or <B>—pick one.”
-            - One rule to fix: “One rule to fix <TOPIC>: ____.”
-
-            C) Gamey:
-            - Fill-in-the-blank: “____ is peak <TOPIC> energy.”
-            - Finish the sentence: “Finish: ‘If you love <TOPIC>, you must ____.’”
-            - MCQ A/B/C: “Pick one: A) <A> B) <B> C) <C> — defend.”
-            - Binary hot-or-not: “Hot or not: <THING> in <TOPIC>. Yes/No.”
-            - Speed round: “Speed round: best/worst/underrated <TOPIC> — go.”
-            - Caption this (text-only): “Caption: ‘When <TOPIC> hits at 2am…’”
-
-            D) Social/banter (light flirty):
-            - Compliment trap: “Dare: accept a compliment—‘You seem ____.’ True?”
-            - Green flag hook: “Instant green flag that makes you like someone: ____.”
-            - Mini-date hypothetical: “Pick: coffee / walk / arcade — which suits you?”
-            - Playful dare (10 words): “Dare: write a 10-word pickup line for me.”
-
-            E) CAH-style (safe-chaos):
-            - CAH fill blank: “My most toxic trait is ____.”
-            - Two blanks: “I tried ____ to impress someone; it backfired when ____.”
-            - Fake headline: “Write a cursed headline about your week: ____.”
-            - Villain origin: “Villain origin story: ____ set me off.”
-            - Worst advice: “Worst advice you’ve heard: ____.”
-            - Most likely to…: “Most likely to start chaos in a group chat: me or you?”
-            - Describe then make it worse: “Describe your life as a movie title—now ruin it.”
-            - Confession card (safe): “Confession: I secretly ____.”
-
-            CONTEXT USE:
-            - If topics include specific media (artists/shows/games), weave in concrete references (character/season/song/genre) when possible.
-            - If topics are broad (“music”, “anime”, “gym”), make the prompt specific via a scenario, hot take, ranking, or A/B/C choice.
-            - Do NOT repeat the same wording pattern twice.
-
-            Now generate EXACTLY 5 prompts separated by "|||".
-
-            `;
-
-    
       // Auto-select a model your key can actually use
       const modelPath = await getWorkingModelPath(apiKey);
-
       const url = `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent`;
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        body: JSON.stringify({
-          systemInstruction: {
-            role: "system",
-            parts: [
-              {
-                text: `
+      const badEnd = /(\btheir\b|\bto\b|\band\b|\bor\b|\bwith\b)$/i;
+      const startsBad = /^(what|why|who|where|when|which)\b/i;
+      const allowedStart = /^(Pick|Rank|Delete|Agree|Hot or not|Dare|Finish|Caption|Write|Speed round|Most likely)\b/;
+
+      const isValid = (arr) =>
+        arr.length === 5 &&
+        arr.every(p =>
+          p.split(/\s+/).length >= 6 &&
+          p.split(/\s+/).length <= 16 &&
+          /[?.!]$/.test(p) &&
+          !startsBad.test(p) &&
+          allowedStart.test(p) &&
+          !badEnd.test(p)
+        );
+
+      let attempts = 0;
+      let prompts = [];
+
+      while (attempts < 2) {
+        attempts++;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body: JSON.stringify({
+            systemInstruction: {
+              role: "system",
+              parts: [
+                {
+                  text: `
 You write 1-on-1 icebreakers for strangers. They must feel human, punchy, playful, slightly chaotic.
 
 OUTPUT:
@@ -175,7 +118,10 @@ OUTPUT:
 
 STYLE:
 - Prompts can be questions OR interactive statements (MCQ, rank, dare, fill-blank).
-- Try NOT to start with What/Why/Who/Where/When.
+- Never start with: What/Why/Who/Where/When/Which.
+- EVERY prompt MUST start with ONE of these: Pick, Rank, Delete, Agree, Hot or not, Dare, Finish, Caption, Write, Speed round, Most likely.
+- EVERY prompt MUST end with ?, !, or . (no cut-off fragments).
+- Ban boring openers: "If you love", "Imagine", "Tell me about".
 - 6–16 words each.
 
 ANTI-BORING RULES:
@@ -211,7 +157,7 @@ Use at least 3 different formats across the 5 prompts:
               parts: [
                 {
                   text: `User interests: ${topics}
-Generate 5 prompts now.`,
+                  Generate 5 prompts now.`,
                 },
               ],
             },
@@ -221,24 +167,29 @@ Generate 5 prompts now.`,
             temperature: 1.1,
             topP: 0.95,
             topK: 40,
-            maxOutputTokens: 220,
+              maxOutputTokens: 320,
           },
-        }),
-      });
+          }),
+        });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`generateContent failed: ${response.status} ${response.statusText} - ${errText}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`generateContent failed: ${response.status} ${response.statusText} - ${errText}`);
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        console.log(`[Gemini] Generated text (attempt ${attempts}):`, text);
+        if (!text) continue;
+
+        const candidates = text.split("|||").map(p => p.trim()).filter(Boolean);
+        if (isValid(candidates)) {
+          return candidates;
+        }
+        prompts = candidates;
       }
 
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      console.log("[Gemini] Generated text:", text);
-      if (!text) return ["Hello! What's on your mind?"];
-
-      // Split by the requested delimiter "|||"
-      const prompts = text.split("|||").map(p => p.trim()).filter(p => p.length > 0);
       return prompts.length > 0 ? prompts : ["Hello! What's on your mind?"];
     } catch (err) {
       console.error("[Gemini] API Error:", err.message);
