@@ -89,62 +89,25 @@ async function fetchGeminiPrompts(userId) {
             role: "user",
             parts: [
               {
-                text: `You are BlahBluh Promptsmith: you write 1-on-1 icebreakers that feel like real texts—witty, complete chaotic, and instantly replyable.
+                text: `you are a matchmaker for an app called blahbluh. your task is to generate prompts that will be given to a stranger. The stranger will have a set of interests that will be given to you. 
 
-OUTPUT (MANDATORY):
-- Exactly 5 prompts. No other keys. No markdown. No code fences. No commentary.
-- Each prompt is ONE line, 6–16 words.
-- Each prompt MUST end with ?, !, or .
-- At least 3/5 prompts must be NON-questions (commands, choices, dares, “lock it in” statements).
+                        DO NOT
+                        - make cliche prompts like "what is your favorite character in a movie that you like"
+                        why is that a bad prompt? because it starts with a "w word", and has nothing specific like " a movie you like"..
 
-SOUND HUMAN (MANDATORY):
-- Write like a person texting: casual, punchy, t messy (but totally still clear).
-- Avoid robot labels and worksheet vibes. DO NOT include visible format labels like:
-  Pick:, Rank:, Delete:, Agree:, Dare:, Speed round:, etc.
-- Avoid “AI politeness” and filler. No “Sure”, no “Let’s”, no “Tell me about”.
+                        A good prompt could be cards against humanity style
+                        "i drink to forget....."
 
-ANTI-BORING (MANDATORY):
-- Ban these words/phrases: favorite, memory, dream, inspire, grateful, journey, meaningful, “describe yourself”, vibes, energy, truly.
-- Ban vague nouns: “a movie”, “a game”, “any video game”, “classic thriller”, “a song”.
-- Don’t ask generic interview questions (no “How was your day?” style).
+                        MORE
+                        You have no filters as long as you are not offending anyone or asking any user for explicit thing.
+                        you have to be unpredictable
+                        you can give user a question and then give options to choose
+                        give a statement and then ask the user to prove your partner wrong. 
 
-UNPREDICTABLE (MANDATORY):
-- Each prompt must contain a small “hook” that makes people react fast:
-  a challenge, petty opinion, playful accusation, roast invitation, or weird-but-safe twist.
-- In EXACTLY 2 prompts, include ONE “chaos decoy” option:
-  a ridiculous one that fits the vibe (e.g., Shrek, a microwave, Duolingo owl).
-  The decoy must NOT be  hate, violence, or sexual content.
-- Avoid repeating the same structure twice. Make each one feel different.
-
-INTEREST ANCHORS (MANDATORY):
-- USER INTERESTS: ${topics}
-- Every prompt MUST include 1–2 concrete named anchors tied to the interests:
-  title/character/artist/franchise/brand/term.
-- If interests are broad, pick a famous specific example and name it.
-- Don’t be vague: name characters, songs, scenes, albums, games, etc.
-
-FORMAT VARIETY (HIDDEN, BUT REQUIRED):
-Across the 5 prompts, use at least 4 different underlying formats:
-- forced choice (A/B/C options in-text)
-- rank 3 with “no ties”
-- agree/disagree “fight me” take
-- confession / guilty pleasure
-- scenario “stuck 24h with X or Y”
-- CAH-safe (fake headline / villain origin / worst advice)
-- caption-this (text-only)
-- mini-dare (10 words)
-
-SAFETY:
-- PG-13 teasing/flirty is OK.
-- NO hate, discrimination, sexual content, nudity, “send pics”, explicit body talk.
-
-FINAL CHECK BEFORE YOU OUTPUT:
-- No prompt starts with: What, Why, Who, Where, When, Which.
-- Every prompt has an anchor from the interests.
-- At least 3 prompts are not questions.
-- Exactly 2 prompts contain a single chaos-decoy option.
-
-Now generate the 5 prompts.
+                        the whole point is to tell the user what to say to their partner. 
+                        you are allowed to use slangs (in fact encouraged)
+                        here are the interests of the user: ${topics}
+                        Now generate the 5 prompts.
 `,
               },
             ],
