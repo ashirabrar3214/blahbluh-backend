@@ -108,6 +108,11 @@ async function fetchGeminiPrompts(userId) {
                         you are allowed to use slangs (in fact encouraged)
                         here are the interests of the user: ${topics}
                         Now generate the 5 prompts.
+
+                        Return JSON only.
+                        Each prompt must be an object with: kind, text, and optionally options.
+                        If kind is mcq, include 3–4 short options.
+                        Do not label options as A) B) C) — just raw strings.
 `,
               },
             ],
@@ -121,7 +126,16 @@ async function fetchGeminiPrompts(userId) {
               prompts: {
                 type: "ARRAY",
                 items: {
-                  type: "STRING"
+                  type: "OBJECT",
+                  properties: {
+                    kind: { type: "STRING" },          // "text" | "mcq"
+                    text: { type: "STRING" },          // the prompt/question
+                    options: {                         // only for mcq
+                      type: "ARRAY",
+                      items: { type: "STRING" }
+                    }
+                  },
+                  required: ["kind", "text"]
                 }
               }
             },
@@ -143,7 +157,28 @@ async function fetchGeminiPrompts(userId) {
 
     try {
       const parsed = JSON.parse(text);
-      return Array.isArray(parsed?.prompts) ? parsed.prompts : [];
+      const arr = Array.isArray(parsed?.prompts) ? parsed.prompts : [];
+
+      return arr
+        .map((p) => {
+          if (typeof p === "string") {
+            return { kind: "text", text: p.trim(), options: [] };
+          }
+
+          const kind = p?.kind === "mcq" ? "mcq" : "text";
+          const promptText = String(p?.text || "").trim();
+          const options = Array.isArray(p?.options)
+            ? p.options.map((o) => String(o).trim()).filter(Boolean)
+            : [];
+
+          // if they claim mcq but give garbage, downgrade
+          if (kind === "mcq" && options.length < 2) {
+            return { kind: "text", text: promptText, options: [] };
+          }
+
+          return { kind, text: promptText, options };
+        })
+        .filter((p) => p.text);
     } catch (e) {
       console.error("[Gemini] JSON Parse Error:", e);
       return [];
@@ -192,6 +227,6 @@ module.exports = {
       return first;
     }
 
-    return "Hello! What's on your mind?";
+    return { kind: "text", text: "Hello! What's on your mind?", options: [] };
   },
 };
