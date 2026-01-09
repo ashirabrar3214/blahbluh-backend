@@ -183,12 +183,61 @@ class SocketService {
         }
       } catch (error) {
         console.error('Error storing/sending message:', error);
+        socket.emit('message-error', {
+          chatId: data.chatId,
+          error: 'Failed to send message. Please try again.'
+        });
       }
     });
 
     socket.on('add-reaction', ({ chatId, messageId, emoji, userId }) => {
       console.log(`[SocketService] 'add-reaction' ${emoji} to msg ${messageId} in ${chatId}`);
       io.to(chatId).emit('message-reaction', { messageId, emoji, userId });
+    });
+
+    // --- WebRTC Voice/Video Signaling ---
+    // This architecture uses the existing Socket.IO connection as a Signaling Server for WebRTC.
+    // The actual audio/video data flows Peer-to-Peer (P2P), ensuring low latency and scalability.
+
+    // 1. Offer: Initiator sends an offer to the peer in the specific chat
+    socket.on('call-offer', ({ chatId, offer, isVideo = false }) => {
+      console.log(`[SocketService] 'call-offer' from ${socket.userId} in chat ${chatId}`);
+      // Relay to the other person in the room (broadcast to room excluding sender)
+      socket.to(chatId).emit('call-offer', {
+        chatId,
+        offer,
+        fromUserId: socket.userId,
+        isVideo // Future-proofing: allows distinguishing voice vs video calls
+      });
+    });
+
+    // 2. Answer: Peer accepts and sends an answer back
+    socket.on('call-answer', ({ chatId, answer }) => {
+      console.log(`[SocketService] 'call-answer' from ${socket.userId} in chat ${chatId}`);
+      socket.to(chatId).emit('call-answer', {
+        chatId,
+        answer,
+        fromUserId: socket.userId
+      });
+    });
+
+    // 3. ICE Candidate: Exchanging network paths to punch through NATs
+    socket.on('ice-candidate', ({ chatId, candidate }) => {
+      // console.log(`[SocketService] 'ice-candidate' from ${socket.userId}`);
+      socket.to(chatId).emit('ice-candidate', {
+        chatId,
+        candidate,
+        fromUserId: socket.userId
+      });
+    });
+
+    // 4. Hangup/Reject: Signaling termination
+    socket.on('call-hangup', ({ chatId }) => {
+      console.log(`[SocketService] 'call-hangup' from ${socket.userId} in chat ${chatId}`);
+      socket.to(chatId).emit('call-hangup', {
+        chatId,
+        byUserId: socket.userId
+      });
     });
 
     socket.on('leave-chat', async ({ chatId, userId, reason, requeuePartner = false })=> {
