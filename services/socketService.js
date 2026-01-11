@@ -200,14 +200,15 @@ class SocketService {
     // The actual audio/video data flows Peer-to-Peer (P2P), ensuring low latency and scalability.
 
     // 1. Offer: Initiator sends an offer to the peer in the specific chat
-    socket.on('call-offer', ({ chatId, offer, isVideo = false }) => {
-      console.log(`[SocketService] 'call-offer' from ${socket.userId} in chat ${chatId}`);
-      // Relay to the other person in the room (broadcast to room excluding sender)
+    socket.on('call-offer', ({ chatId, offer, fromUserId, isVideo = false }) => {
+      const resolvedFromUserId = socket.userId || fromUserId; // ✅ fallback
+      console.log(`[SocketService] 'call-offer' from ${resolvedFromUserId} in chat ${chatId}`);
+
       socket.to(chatId).emit('call-offer', {
         chatId,
         offer,
-        fromUserId: socket.userId,
-        isVideo // Future-proofing: allows distinguishing voice vs video calls
+        fromUserId: resolvedFromUserId,
+        isVideo
       });
     });
 
