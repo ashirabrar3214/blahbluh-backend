@@ -439,8 +439,24 @@ socket.on('disconnect', async () => {
 
       // Check if users have blocked each other
       try {
-        const isBlocked = await friendService.isBlocked(id1, id2);
-        if (isBlocked) {
+        // 1. Check blocked_users table (via friendService)
+        const isBlockedInTable = await friendService.isBlocked(id1, id2);
+
+        // 2. Double check: users table blocked_users array (A blocks B or B blocks A)
+        let isBlockedInArray = false;
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, blocked_users')
+          .in('id', [id1, id2]);
+
+        if (usersData) {
+          const u1 = usersData.find(u => u.id === id1);
+          const u2 = usersData.find(u => u.id === id2);
+          if (u1?.blocked_users?.includes(id2)) isBlockedInArray = true;
+          if (u2?.blocked_users?.includes(id1)) isBlockedInArray = true;
+        }
+
+        if (isBlockedInTable || isBlockedInArray) {
           console.log(`[SocketService] Users ${id1} and ${id2} are blocked. Skipping match.`);
           // Skip this pairing, remove user2 and try again
           queue.splice(1, 1);
