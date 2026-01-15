@@ -7,6 +7,7 @@ const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const { router: chatRoutes, queue } = require('./routes/chatRoutes');
 const friendRoutes = require('./routes/friendRoutes');
+const moderationRoutes = require('./routes/moderationRoutes');
 const socketService = require('./services/socketService');
 
 const app = express();
@@ -27,6 +28,7 @@ app.use(express.json());
 app.use('/api', userRoutes);
 app.use('/api', chatRoutes);
 app.use('/api', friendRoutes);
+app.use('/api', moderationRoutes);
 
 // Make io and connectedUsers globally accessible for notifications
 global.io = io;

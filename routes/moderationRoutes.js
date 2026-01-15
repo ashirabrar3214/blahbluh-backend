@@ -12,7 +12,7 @@ const supabase = require('../config/supabase');
  * Called by the app to report a user.
  * Delegates logic to moderationService.submitReport().
  */
-router.post('/report', async (req, res) => {
+router.post('/submit-report', async (req, res) => {
   try {
     const { 
       reporter_user_id, 
