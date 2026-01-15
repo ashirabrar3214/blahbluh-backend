@@ -2,8 +2,9 @@ const express = require('express');
 const friendService = require('../services/friendService');
 const supabase = require('../config/supabase');
 const router = express.Router();
+const banGuard = require('../middleware/banGuard');
 
-router.post('/friend-request', async (req, res) => {
+router.post('/friend-request', banGuard, async (req, res) => {
   try {
     const { fromUserId, toUserId } = req.body;
     console.log(`[FRIEND] Request from ${fromUserId} to ${toUserId}`);

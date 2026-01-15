@@ -3,10 +3,11 @@ const userService = require('../services/userService');
 const socketService = require('../services/socketService');
 const geminiService = require('./geminiService');
 const router = express.Router();
+const banGuard = require('../middleware/banGuard');
 
 const queue = [];
 
-router.post('/join-queue', async (req, res) => {
+router.post('/join-queue', banGuard, async (req, res) => {
   try {
     const { userId } = req.body;
     console.log(`[ChatRoutes] 'join-queue' request for userId: ${userId}`);

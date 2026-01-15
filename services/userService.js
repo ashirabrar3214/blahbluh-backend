@@ -99,21 +99,6 @@ class UserService {
     return data;
   }
 
-  async reportUser(userId) {
-    const { data, error } = await supabase
-      .from('users')
-      .update({ is_reported: true })
-      .eq('id', userId)
-      .select()
-      .single();
-
-    if (error) {
-      console.error(error);
-      throw error;
-    }
-    return data;
-  }
-
   async addFriend(userId, friendId) {
     const user = await this.getUser(userId);
     const friends = [...(user.friends || []), friendId];
@@ -154,6 +139,22 @@ class UserService {
       throw error;
     }
     return data?.interests || [];
+  }
+
+  async setBanFields(userId, { banned_until, ban_reason, ban_source }) {
+    const { data, error } = await supabase
+      .from('users')
+      .update({ 
+        banned_until, 
+        ban_reason, 
+        ban_source 
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 }
 

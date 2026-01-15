@@ -1,6 +1,7 @@
 const express = require('express');
 const userService = require('../services/userService');
 const friendService = require('../services/friendService');
+const moderationService = require('../services/moderationService');
 const router = express.Router();
 const supabase = require('../config/supabase');
 
@@ -185,41 +186,6 @@ router.get('/is-blocked', async (req, res) => {
   }
 });
 
-router.post('/submit-report', async (req, res) => {
-  try {
-    const {
-      id,
-      reporter_user_id,
-      reporter_username,
-      reported_user_id,
-      reported_username,
-      reason,
-      last_message_json,
-      created_at
-    } = req.body;
-
-    const { error } = await supabase
-      .from('user_reports')
-      .insert({
-        ...(id && { id }),
-        reporter_user_id,
-        reporter_username,
-        reported_user_id,
-        reported_username,
-        reason,
-        last_message_json,
-        created_at: created_at || new Date()
-      });
-
-    if (error) throw error;
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error submitting report:', error);
-    res.status(500).json({ error: 'Failed to submit report' });
-  }
-});
-
 router.put('/:userId/pfp', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -326,15 +292,6 @@ router.put('/:userId', async (req, res) => {
     }
 
     const user = await userService.updateUser(userId, updates);
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/:userId/report', async (req, res) => {
-  try {
-    const user = await userService.reportUser(req.params.userId);
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
