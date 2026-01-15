@@ -8,7 +8,7 @@ module.exports = {
   // Escalation Thresholds (Unique Reporters)
   LIFETIME_REPORTS_THRESHOLD_BAN: 8,
   DAILY_REPORTS_THRESHOLD_BAN_24H: 5,
-  DAILY_REPORTS_THRESHOLD_BAN_1H: 3,
+  DAILY_REPORTS_THRESHOLD_BAN_1H: 1,
   DAILY_REPORTS_THRESHOLD_WARNING: 1,
 
   // Ban Durations (in hours)
