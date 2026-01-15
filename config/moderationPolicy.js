@@ -3,7 +3,7 @@
 module.exports = {
   // Reporting Gates
   REPORT_PAIR_COOLDOWN_HOURS: 24,
-  REPORTS_PER_REPORTER_PER_24H: 1,
+  REPORTS_PER_REPORTER_PER_24H: 5,
 
   // Escalation Thresholds (Unique Reporters)
   LIFETIME_REPORTS_THRESHOLD_BAN: 8,
