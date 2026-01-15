@@ -19,16 +19,19 @@ router.post('/submit-report', async (req, res) => {
       reported_user_id, 
       reason, 
       evidence, 
+      last_message_json,
       chat_id,
       reporter_username,
       reported_username
     } = req.body;
 
+    const evidenceData = evidence || last_message_json;
+
     const result = await moderationService.submitReport({
       reporter_user_id, 
       reported_user_id, 
       reason, 
-      evidence, 
+      evidence: evidenceData, 
       chat_id,
       reporter_username,
       reported_username
