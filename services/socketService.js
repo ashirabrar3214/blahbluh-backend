@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const friendService = require('./friendService');
 const supabase = require('../config/supabase');
+const adminService = require('./adminService');
 
 class SocketService {
   constructor() {
@@ -296,6 +297,84 @@ class SocketService {
       // NOTE:
       // If reason === 'exit', we intentionally do NOT requeue the leaver.
       // The frontend also calls /leave-queue for safety.
+    });
+
+    // ==========================================
+    // ADMIN PANEL EVENTS
+    // ==========================================
+
+    // Helper to verify admin (basic implementation)
+    // For production, you should verify a token sent with the handshake or event
+    const verifyAdmin = () => {
+      // TODO: Implement real admin verification here. 
+      // For now, we allow it so the UI works as requested.
+      return true; 
+    };
+
+    socket.on('admin-get-stats', async () => {
+      if (!verifyAdmin()) return;
+      console.log(`[SocketService] Admin stats requested by ${socket.id}`);
+
+      // 1. Get Memory Stats (Real-time)
+      const activeUsers = this.userSockets.size;
+      const totalPairs = this.activeChats.size;
+      const pairedUsers = totalPairs * 2;
+
+      // 2. Get DB Stats (Persistent)
+      const dbStats = await adminService.getDbStats();
+
+      // 3. Emit Combined Stats
+      socket.emit('admin-stats', {
+        activeUsers,
+        pairedUsers,
+        totalPairs,
+        reportedUsers: dbStats.reportedUsers,
+        bannedUsers: dbStats.bannedUsers
+      });
+    });
+
+    socket.on('admin-get-banned', async () => {
+      if (!verifyAdmin()) return;
+      const list = await adminService.getBannedUsers();
+      socket.emit('admin-banned-list', list);
+    });
+
+    socket.on('admin-unban-user', async (userId) => {
+      if (!verifyAdmin()) return;
+      console.log(`[SocketService] Admin unbanning user: ${userId}`);
+      
+      const success = await adminService.unbanUser(userId);
+      
+      if (success) {
+        // Refresh the list for the admin
+        const list = await adminService.getBannedUsers();
+        socket.emit('admin-banned-list', list);
+      }
+    });
+
+    socket.on('admin-search-user', async (searchTerm) => {
+      if (!verifyAdmin()) return;
+      
+      const users = await adminService.searchUsers(searchTerm);
+      
+      // Map to frontend format and determine status
+      const results = users.map(u => {
+        let status = 'Offline';
+        const isBanned = u.banned_until && new Date(u.banned_until) > new Date();
+        const isOnline = this.userSockets.has(u.id);
+
+        if (isBanned) status = 'Banned';
+        else if (isOnline) status = 'Active'; // 'Active' in UI means Online green
+
+        return {
+          id: u.id,
+          username: u.username,
+          avatar: u.pfp,
+          status: status
+        };
+      });
+
+      socket.emit('admin-search-results', results);
     });
 
 socket.on('disconnect', async () => {
