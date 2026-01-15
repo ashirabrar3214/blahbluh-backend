@@ -291,8 +291,22 @@ class SocketService {
 
       // Leave room and delete active chat
       socket.leave(chatId);
-      this.activeChats.delete(chatId);
-      console.log(`[SocketService] Chat ${chatId} deleted`);
+      
+      if (chatData.present) {
+        chatData.present.delete(userId);
+
+        // Only delete the chat when nobody is left in it
+        if (chatData.present.size === 0) {
+          this.activeChats.delete(chatId);
+          console.log(`[SocketService] Chat ${chatId} deleted (everyone left)`);
+        } else {
+          console.log(`[SocketService] Chat ${chatId} still active; present=${[...chatData.present].join(',')}`);
+        }
+      } else {
+        // fallback for older chat objects
+        this.activeChats.delete(chatId);
+        console.log(`[SocketService] Chat ${chatId} deleted (no presence tracking)`);
+      }
 
       // NOTE:
       // If reason === 'exit', we intentionally do NOT requeue the leaver.
@@ -317,7 +331,11 @@ class SocketService {
 
       // 1. Get Memory Stats (Real-time)
       const activeUsers = this.userSockets.size;
-      const totalPairs = this.activeChats.size;
+      
+      let totalPairs = 0;
+      for (const chat of this.activeChats.values()) {
+        if (chat?.present?.size === 2) totalPairs++;
+      }
       const pairedUsers = totalPairs * 2;
 
       // 2. Get DB Stats (Persistent)
@@ -575,7 +593,11 @@ socket.on('disconnect', async () => {
       }
 
       const chatId = uuidv4();
-      this.activeChats.set(chatId, { users: [u1, u2], messages: [] });
+      this.activeChats.set(chatId, { 
+        users: [u1, u2], 
+        messages: [],
+        present: new Set([id1, id2]) 
+      });
 
       console.log(`[SocketService] Active chat created: ${chatId}`);
       socket1.emit('chat-paired', { chatId, users: [u1, u2] });
