@@ -146,7 +146,7 @@ router.get('/reported', async (req, res) => {
 
     res.json(results);
   } catch (error) {
-    console.error('[Moderation] List reported error:', error);
+    console.error('[Moderation] List reported error is', error);
     res.status(500).json({ error: 'Failed to list reported users' });
   }
 });
