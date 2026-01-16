@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const friendService = require('./friendService');
 const supabase = require('../config/supabase');
 const adminService = require('./adminService');
+const moderationService = require('./moderationService');
 
 class SocketService {
   constructor() {
@@ -20,6 +21,30 @@ class SocketService {
       socket.userId = userId;
       console.log(`User registered: ${userId} -> ${socket.id}`);
       socket.emit('registration-confirmed', { userId });
+    });
+
+    socket.on('join-queue', async (data) => {
+      try {
+        const { userId, tags } = data;
+
+        // 1. CHECK IF BANNED
+        const banStatus = await moderationService.isUserBanned(userId);
+        if (banStatus.banned) {
+          // Emit a specific error event to the client
+          socket.emit('banned', { 
+            reason: banStatus.reason, 
+            bannedUntil: banStatus.banned_until 
+          });
+          return; // Stop here, do not add to queue
+        }
+
+        console.log(`User ${userId} joined queue with tags: ${tags}`);
+        const result = await this.joinQueue(userId, socket.id, queue);
+        socket.emit('queue-joined', result);
+        this.tryMatchUsers(queue);
+      } catch (error) {
+        console.error('Join queue error:', error);
+      }
     });
 
     // Fetch unread messages on connect
