@@ -125,26 +125,19 @@ router.get('/reported', async (req, res) => {
 
 /**
  * GET /moderation/reports/:userId
- * Get report history for a specific user + evidence snippets.
+ * Get full moderation profile (Stats + Reports + Ban History)
  */
 router.get('/reports/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
-    const limit = parseInt(req.query.limit) || 20;
 
-    const { data, error } = await supabase
-      .from('user_reports')
-      .select('*')
-      .eq('reported_user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw error;
+    // Delegate complex data gathering to the service
+    const data = await moderationService.getUserModerationProfile(userId);
 
     res.json(data);
   } catch (error) {
-    console.error('[Moderation] Get reports error:', error);
-    res.status(500).json({ error: 'Failed to fetch reports' });
+    console.error('[Moderation] Get profile error:', error);
+    res.status(500).json({ error: 'Failed to fetch user moderation profile' });
   }
 });
 

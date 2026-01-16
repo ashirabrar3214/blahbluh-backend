@@ -102,10 +102,25 @@ class ModerationService {
 
   // D) applyBan
   async applyBan(userId, banUntil, reason, source) {
+    // 1. Update the User's current status (existing logic)
     await userService.setBanFields(userId, {
       banned_until: banUntil.toISOString(),
       ban_reason: reason,
       ban_source: source
+    });
+
+    // 2. INSERT into ban_logs (NEW LOGIC for history)
+    const now = new Date();
+    const durationMs = banUntil.getTime() - now.getTime();
+    const durationHours = Math.round(durationMs / (1000 * 60 * 60));
+
+    await supabase.from('ban_logs').insert({
+      user_id: userId,
+      reason: reason,
+      source: source,
+      duration_hours: durationHours > 0 ? durationHours : 0,
+      expires_at: banUntil.toISOString(),
+      created_at: now.toISOString()
     });
   }
 
@@ -116,6 +131,52 @@ class ModerationService {
       return { banned: true, banned_until: data.banned_until, reason: data.ban_reason };
     }
     return { banned: false };
+  }
+
+  async getUserModerationProfile(userId) {
+    // Parallel fetch: Reports and Ban Logs
+    const [reportsResult, bansResult] = await Promise.all([
+      supabase
+        .from('user_reports')
+        .select('*')
+        .eq('reported_user_id', userId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('ban_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+    ]);
+
+    const reports = reportsResult.data || [];
+    const bans = bansResult.data || [];
+
+    // Calculate Stats
+    const uniqueReporters = new Set(reports.map(r => r.reporter_user_id)).size;
+
+    // Use the most recent ban log for "lastBanDate", or null if none
+    const lastBanDate = bans.length > 0 ? bans[0].created_at : null;
+
+    return {
+      stats: {
+        totalReports: reports.length,
+        uniqueReporters: uniqueReporters,
+        banCount: bans.length,
+        lastBanDate: lastBanDate
+      },
+      reports: reports.map(r => ({
+        id: r.id,
+        reason: r.reason,
+        reporter_username: r.reporter_username || 'Unknown', // handled by your DB schema
+        created_at: r.created_at,
+        message_context: r.last_message_json // mapping your DB column to frontend expectation
+      })),
+      bans: bans.map(b => ({
+        reason: b.reason,
+        banned_at: b.created_at,
+        duration: b.duration_hours
+      }))
+    };
   }
 
   // F) Query Helpers
