@@ -28,7 +28,8 @@ app.use(express.json());
 app.use('/api', userRoutes);
 app.use('/api', chatRoutes);
 app.use('/api', friendRoutes);
-app.use('/api', moderationRoutes);
+// This adds the "/moderation" prefix to all routes in that file
+app.use('/api/moderation', moderationRoutes);
 
 // Make io and connectedUsers globally accessible for notifications
 global.io = io;
