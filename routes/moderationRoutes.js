@@ -205,4 +205,27 @@ router.post('/unban', async (req, res) => {
   }
 });
 
+/**
+ * POST /moderation/check-admin
+ * Checks if the provided email matches the server-side ADMIN_EMAIL env var.
+ */
+router.post('/check-admin', (req, res) => {
+  const { email } = req.body;
+  
+  // Get the admin email from environment variables (set this in Railway)
+  const adminEmail = process.env.ADMIN_EMAIL;
+
+  if (!adminEmail) {
+    console.error('ADMIN_EMAIL is not set in backend environment variables.');
+    return res.json({ isAdmin: false });
+  }
+
+  // Simple string comparison (case-insensitive for safety)
+  if (email && email.toLowerCase() === adminEmail.toLowerCase()) {
+    return res.json({ isAdmin: true });
+  }
+
+  return res.json({ isAdmin: false });
+});
+
 module.exports = router;
