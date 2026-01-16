@@ -600,6 +600,13 @@ socket.on('disconnect', async () => {
       });
 
       console.log(`[SocketService] Active chat created: ${chatId}`);
+
+      // ✅ CRITICAL: server-side room join (do NOT rely on client join-chat)
+      socket1.join(chatId);
+      socket2.join(chatId);
+      console.log(`[SocketService] Forced room join: ${chatId} -> ${id1}, ${id2}`);
+
+      // now emit paired
       socket1.emit('chat-paired', { chatId, users: [u1, u2] });
       socket2.emit('chat-paired', { chatId, users: [u1, u2] });
 
