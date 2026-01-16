@@ -2,8 +2,6 @@ const express = require('express');
 const router = express.Router();
 const moderationService = require('../services/moderationService');
 const supabase = require('../config/supabase');
-const socketService = require('../services/socketService');
-const adminService = require('../services/adminService');
 
 // --------------------------------------------------------------------------
 // Public Endpoints
@@ -56,28 +54,6 @@ router.post('/submit-report', async (req, res) => {
 // --------------------------------------------------------------------------
 
 /**
- * GET /moderation/stats
- * comprehensive stats for the admin dashboard
- */
-router.get('/stats', async (req, res) => {
-  try {
-    // 1. Get Memory Stats (Real-time)
-    const socketStats = socketService.getRealTimeStats();
-
-    // 2. Get DB Stats (Persistent)
-    const dbStats = await adminService.getDashboardStats();
-
-    res.json({
-      ...socketStats, // activeUsers, usersInQueue, pairedUsers, idleUsers
-      ...dbStats      // totalReported, totalBlocks, lastActiveUser
-    });
-  } catch (error) {
-    console.error('Stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
-  }
-});
-
-/**
  * GET /moderation/reported
  * List reported users with summary stats.
  * Query params: 
@@ -128,15 +104,11 @@ router.get('/reported', async (req, res) => {
       const lastReportTime = userMap.get(user.id);
       // Use service helper for accurate counts
       const uniqueReporters24h = await moderationService.countUniqueReportersSince(user.id, oneDayAgo);
-      
-      // Get how many times this user has been blocked
-      const blocksReceived = await adminService.getUserBlockCount(user.id);
 
       return {
         ...user,
         lastReportTime,
         uniqueReporters24h,
-        blocksReceived,
         status: user.banned_until && new Date(user.banned_until) > new Date() ? 'banned' : 'active'
       };
     }));
@@ -146,7 +118,7 @@ router.get('/reported', async (req, res) => {
 
     res.json(results);
   } catch (error) {
-    console.error('[Moderation] List reported error is', error);
+    console.error('[Moderation] List reported error:', error);
     res.status(500).json({ error: 'Failed to list reported users' });
   }
 });

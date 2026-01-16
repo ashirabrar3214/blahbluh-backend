@@ -10,24 +10,15 @@ class SocketService {
     this.activeChats = new Map();
     this.userSessions = new Map(); // userId -> socketId
     this.userSocketMap = new Map(); // userId -> socketId for queue
-    this.queueReference = [];
   }
 
   handleConnection(io, socket, queue) {
-    this.queueReference = queue;
     console.log(`[SocketService] New connection handling started: ${socket.id}`);
-    socket.on('register-user', async ({ userId }) => {
+    socket.on('register-user', ({ userId }) => {
       console.log(`[SocketService] 'register-user' received for ${userId} on socket ${socket.id}`);
       this.userSockets.set(userId, socket);
       this.userSessions.set(userId, socket.id);
       socket.userId = userId;
-      
-      // Update Last Active Timestamp in DB
-      await supabase
-        .from('users')
-        .update({ last_active_at: new Date().toISOString() })
-        .eq('id', userId);
-
       console.log(`User registered: ${userId} -> ${socket.id}`);
       socket.emit('registration-confirmed', { userId });
     });
@@ -646,28 +637,6 @@ socket.on('disconnect', async () => {
 
       console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
     }
-  }
-
-  getRealTimeStats() {
-    const activeUsersCount = this.userSockets.size;
-    
-    // Count actually paired users (assuming 2 per chat)
-    let pairedUsersCount = 0;
-    this.activeChats.forEach(chat => {
-      if (chat.users && chat.users.length > 0) {
-        pairedUsersCount += chat.users.length;
-      }
-    });
-
-    const waitingInQueueCount = this.queueReference.length;
-    const idleUsersCount = Math.max(0, activeUsersCount - pairedUsersCount - waitingInQueueCount);
-
-    return {
-      activeUsers: activeUsersCount,
-      usersInQueue: waitingInQueueCount,
-      pairedUsers: pairedUsersCount,
-      idleUsers: idleUsersCount // Online but not in chat or queue
-    };
   }
 
 }
