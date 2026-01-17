@@ -36,6 +36,47 @@ class AdminService {
     }
   }
 
+  async getDashboardStats() {
+    try {
+      // 1. Total Reported Users (unique)
+      const { count: reportedCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_reported', true);
+
+      // 2. Total Blocks (Global count of rows in blocked_users)
+      const { count: totalBlocks } = await supabase
+        .from('blocked_users')
+        .select('*', { count: 'exact', head: true });
+
+      // 3. Last Active User
+      const { data: lastActive } = await supabase
+        .from('users')
+        .select('username, last_active_at')
+        .not('last_active_at', 'is', null)
+        .order('last_active_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      return {
+        totalReported: reportedCount || 0,
+        totalBlocks: totalBlocks || 0,
+        lastActiveUser: lastActive ? { username: lastActive.username, time: lastActive.last_active_at } : null
+      };
+    } catch (error) {
+      console.error('Error fetching admin dashboard stats:', error);
+      return {};
+    }
+  }
+
+  async getUserBlockCount(userId) {
+    const { count } = await supabase
+      .from('blocked_users')
+      .select('*', { count: 'exact', head: true })
+      .eq('blocked_user_id', userId);
+    return count || 0;
+  }
+
   /**
    * Get list of currently banned users.
    */
