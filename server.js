@@ -8,7 +8,9 @@ const userRoutes = require('./routes/userRoutes');
 const { router: chatRoutes, queue } = require('./routes/chatRoutes');
 const friendRoutes = require('./routes/friendRoutes');
 const moderationRoutes = require('./routes/moderationRoutes');
+const gifRoutes = require('./routes/gifRoutes');
 const socketService = require('./services/socketService');
+const gifService = require('./services/gifService');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +32,7 @@ app.use('/api', chatRoutes);
 app.use('/api', friendRoutes);
 // This adds the "/moderation" prefix to all routes in that file
 app.use('/api/moderation', moderationRoutes);
+app.use('/api/gifs', gifRoutes);
 
 // Make io and connectedUsers globally accessible for notifications
 global.io = io;
@@ -64,6 +67,9 @@ io.on('connection', (socket) => {
 setInterval(async () => {
   await socketService.tryMatchUsers(queue);
 }, 500);
+
+// Initialize the cache on server start
+gifService.init();
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
