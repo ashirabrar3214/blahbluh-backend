@@ -49,7 +49,15 @@ class AdminService {
         .from('blocked_users')
         .select('*', { count: 'exact', head: true });
 
-      // 3. Last Active User
+      // 3. Total Banned Users
+      const now = new Date().toISOString();
+      const { count: bannedCount } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .not('banned_until', 'is', null)
+        .gt('banned_until', now);
+
+      // 4. Last Active User
       const { data: lastActive } = await supabase
         .from('users')
         .select('username, last_active_at')
@@ -61,6 +69,7 @@ class AdminService {
       return {
         totalReported: reportedCount || 0,
         totalBlocks: totalBlocks || 0,
+        totalBanned: bannedCount || 0,
         lastActiveUser: lastActive ? { username: lastActive.username, time: lastActive.last_active_at } : null
       };
     } catch (error) {

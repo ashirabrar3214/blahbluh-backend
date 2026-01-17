@@ -11,10 +11,16 @@ class SocketService {
     this.userSessions = new Map(); // userId -> socketId
     this.userSocketMap = new Map(); // userId -> socketId for queue
     this.queueReference = [];
+    this.io = null;
+    this.statsInterval = null;
   }
 
   handleConnection(io, socket, queue) {
     this.queueReference = queue;
+    if (!this.io) {
+      this.io = io;
+      this.startStatsInterval();
+    }
     console.log(`[SocketService] New connection handling started: ${socket.id}`);
     socket.on('register-user', async ({ userId }) => {
       console.log(`[SocketService] 'register-user' received for ${userId} on socket ${socket.id}`);
@@ -363,26 +369,12 @@ class SocketService {
       if (!verifyAdmin()) return;
       console.log(`[SocketService] Admin stats requested by ${socket.id}`);
 
-      // 1. Get Memory Stats (Real-time)
-      const activeUsers = this.userSockets.size;
-      
-      let totalPairs = 0;
-      for (const chat of this.activeChats.values()) {
-        if (chat?.present?.size === 2) totalPairs++;
-      }
-      const pairedUsers = totalPairs * 2;
+      // Join the admin room for real-time updates
+      socket.join('admins');
 
-      // 2. Get DB Stats (Persistent)
-      const dbStats = await adminService.getDbStats();
-
-      // 3. Emit Combined Stats
-      socket.emit('admin-stats', {
-        activeUsers,
-        pairedUsers,
-        totalPairs,
-        reportedUsers: dbStats.reportedUsers,
-        bannedUsers: dbStats.bannedUsers
-      });
+      // Send immediate stats
+      const stats = await this.gatherStats();
+      socket.emit('admin-stats', stats);
     });
 
     socket.on('admin-get-banned', async () => {
@@ -646,6 +638,25 @@ socket.on('disconnect', async () => {
 
       console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
     }
+  }
+
+  startStatsInterval() {
+    if (this.statsInterval) return;
+    this.statsInterval = setInterval(async () => {
+      if (this.io) {
+        const room = this.io.sockets.adapter.rooms.get('admins');
+        if (room && room.size > 0) {
+          const stats = await this.gatherStats();
+          this.io.to('admins').emit('admin-stats', stats);
+        }
+      }
+    }, 3000);
+  }
+
+  async gatherStats() {
+    const socketStats = this.getRealTimeStats();
+    const dbStats = await adminService.getDashboardStats();
+    return { ...socketStats, ...dbStats };
   }
 
   getRealTimeStats() {
