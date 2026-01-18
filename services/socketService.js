@@ -3,6 +3,7 @@ const friendService = require('./friendService');
 const supabase = require('../config/supabase');
 const adminService = require('./adminService');
 const moderationService = require('./moderationService');
+const { validateClipUrl } = require('./linkValidator');
 
 class SocketService {
   constructor() {
@@ -177,6 +178,23 @@ class SocketService {
     socket.on('send-message', async (data) => {
       console.log(`[SocketService] 'send-message' received`, data);
       try {
+        // INTERCEPT: If it is a Clip, validate it first
+        if (data.type === 'clip') {
+          const validation = await validateClipUrl(data.message);
+
+          if (!validation.valid) {
+            // Emit error ONLY to the sender
+            socket.emit('message-error', {
+              id: data.id,
+              error: validation.error
+            });
+            return; // Stop processing
+          }
+
+          // Use the cleaned URL
+          data.message = validation.cleanUrl;
+        }
+
         const { chatId, message, userId } = data;
         
         // Store friend messages in database
