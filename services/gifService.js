@@ -4,30 +4,39 @@ const axios = require('axios');
 let trendingCache = [];
 let searchCache = new Map(); // Key: search_term, Value: [gifs]
 let lastTrendingFetch = 0;
+
+// --- STICKER CACHE ---
+let trendingStickersCache = [];
+let stickerSearchCache = new Map();
+let lastStickerTrendingFetch = 0;
+
 const CACHE_DURATION = 60 * 60 * 1000; // 1 Hour
 const API_KEY = process.env.GIPHY_API_KEY;
 
 // --- INITIALIZATION ---
 // Fetch trending immediately when server starts to "warm up" the cache
 const init = async () => {
-  console.log('[GifService] Warming up GIF cache...');
+  console.log('[GifService] Warming up caches...');
   await getTrending(); 
+  await getTrendingStickers(); // Warm up stickers too
 };
 
 // --- HELPER: FETCH FROM GIPHY ---
-const fetchFromGiphy = async (endpoint, params = {}) => {
+const fetchFromGiphy = async (type, endpoint, params = {}) => {
   try {
-    const response = await axios.get(`https://api.giphy.com/v1/gifs/${endpoint}`, {
+    // type is 'gifs' or 'stickers'
+    const response = await axios.get(`https://api.giphy.com/v1/${type}/${endpoint}`, {
       params: { ...params, api_key: API_KEY, limit: 20, rating: 'pg-13' }
     });
-    return response.data.data.map(gif => ({
-      id: gif.id,
-      title: gif.title,
-      url: gif.images.fixed_height.url, // Optimized for chat
-      preview: gif.images.fixed_height_small.url
+    return response.data.data.map(item => ({
+      id: item.id,
+      title: item.title,
+      // Stickers often use 'fixed_height_small' for preview too
+      url: item.images.fixed_height.url, 
+      preview: item.images.fixed_height_small.url
     }));
   } catch (error) {
-    console.error('[GifService] Giphy API Error:', error.message);
+    console.error(`[GifService] Giphy ${type} Error:`, error.message);
     return [];
   }
 };
@@ -43,7 +52,7 @@ const getTrending = async () => {
 
   // Otherwise, fetch new
   console.log('[GifService] Cache expired. Hitting Giphy API for Trending.');
-  const gifs = await fetchFromGiphy('trending');
+  const gifs = await fetchFromGiphy('gifs', 'trending');
   if (gifs.length > 0) {
     trendingCache = gifs;
     lastTrendingFetch = now;
@@ -62,7 +71,7 @@ const searchGifs = async (term) => {
 
   // 2. Hit API
   console.log(`[GifService] Hitting Giphy API for search: "${cleanTerm}"`);
-  const gifs = await fetchFromGiphy('search', { q: cleanTerm });
+  const gifs = await fetchFromGiphy('gifs', 'search', { q: cleanTerm });
   
   // 3. Save to Cache (Simple LRU could be added, but Map is fine for now)
   if (gifs.length > 0) {
@@ -72,4 +81,36 @@ const searchGifs = async (term) => {
   return gifs;
 };
 
-module.exports = { init, getTrending, searchGifs };
+// --- NEW STICKER METHODS ---
+
+const getTrendingStickers = async () => {
+  const now = Date.now();
+  if (trendingStickersCache.length > 0 && (now - lastStickerTrendingFetch < CACHE_DURATION)) {
+    return trendingStickersCache;
+  }
+  console.log('[GifService] Fetching Trending Stickers...');
+  const stickers = await fetchFromGiphy('stickers', 'trending');
+  if (stickers.length > 0) {
+    trendingStickersCache = stickers;
+    lastStickerTrendingFetch = now;
+  }
+  return trendingStickersCache;
+};
+
+const searchStickers = async (term) => {
+  const cleanTerm = term.trim().toLowerCase();
+  
+  if (stickerSearchCache.has(cleanTerm)) {
+    return stickerSearchCache.get(cleanTerm);
+  }
+
+  console.log(`[GifService] Searching Stickers: "${cleanTerm}"`);
+  const stickers = await fetchFromGiphy('stickers', 'search', { q: cleanTerm });
+  
+  if (stickers.length > 0) {
+    stickerSearchCache.set(cleanTerm, stickers);
+  }
+  return stickers;
+};
+
+module.exports = { init, getTrending, searchGifs, getTrendingStickers, searchStickers };

@@ -15,4 +15,17 @@ router.get('/search', async (req, res) => {
   res.json(gifs);
 });
 
+// ... NEW STICKER ROUTES ...
+router.get('/stickers/trending', async (req, res) => {
+  const stickers = await gifService.getTrendingStickers();
+  res.json(stickers);
+});
+
+router.get('/stickers/search', async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: 'Query required' });
+  const stickers = await gifService.searchStickers(q);
+  res.json(stickers);
+});
+
 module.exports = router;
