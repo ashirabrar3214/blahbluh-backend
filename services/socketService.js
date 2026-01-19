@@ -177,29 +177,42 @@ class SocketService {
 
     socket.on('send-message', async (data) => {
       console.log(`[SocketService] 'send-message' received`, data);
+      
+      // 1. SAFETY CHECK: Stop crash if chatId is missing
+      if (!data.chatId) {
+        console.error('[SocketService] ERROR: Message missing chatId', data);
+        socket.emit('message-error', { 
+          id: data.id, 
+          error: 'Chat ID missing. Please refresh.' 
+        });
+        return;
+      }
+
       try {
-        // INTERCEPT: If it is a Clip, validate it first
+        // 2. VALIDATE CLIPS
         if (data.type === 'clip') {
+          // Ensure linkValidator is imported at the top of file!
+          // const { validateClipUrl } = require('../services/linkValidator'); 
           const validation = await validateClipUrl(data.message);
 
           if (!validation.valid) {
-            // Emit error ONLY to the sender
             socket.emit('message-error', {
               id: data.id,
               error: validation.error
             });
-            return; // Stop processing
+            return;
           }
-
-          // Use the cleaned URL
           data.message = validation.cleanUrl;
         }
 
         const { chatId, message, userId } = data;
         
-        // Store friend messages in database
+        // 3. STORE & BROADCAST
         if (chatId.startsWith('friend_')) {
-          console.log(`[SocketService] Processing friend message for ${chatId}`);
+          // ... your existing friend logic ...
+          console.log(`[SocketService] Friend message processing: ${chatId}`);
+          
+          // Database Insert Logic
           const [, userA, userB] = chatId.split('_');
           const receiverId = userA === userId ? userB : userA;
           
@@ -215,30 +228,24 @@ class SocketService {
             .single();
             
           if (error) throw error;
-          console.log(`[SocketService] Friend message saved to DB: ${savedMessage.id}`);
           
-          // Create message data with database ID, preserving other fields from client
           const messageData = {
             ...data,
             id: savedMessage.id,
             timestamp: savedMessage.created_at,
           };
           
-          // Send to chat room AND emit special friend message event
           io.to(chatId).emit('new-message', messageData);
           io.to(chatId).emit('friend-message-received', messageData);
-          console.log(`[SocketService] Friend message emitted to room ${chatId}`);
         } else {
-          // Regular random chat message
-          console.log(`[SocketService] Processing regular chat message for ${chatId}`);
+          // ... your existing random chat logic ...
+          console.log(`[SocketService] Random message processing: ${chatId}`);
           const messageData = {
             ...data,
             id: Date.now(),
             timestamp: new Date().toISOString(),
           };
-          
           io.to(chatId).emit('new-message', messageData);
-          console.log(`[SocketService] Regular message emitted to room ${chatId}`);
         }
       } catch (error) {
         console.error('Error storing/sending message:', error);
