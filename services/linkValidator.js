@@ -8,7 +8,7 @@ const ALLOWED_PATTERNS = [
   { domain: 'tiktok.com', regex: /tiktok\.com\/@[\w.-]+\/video\/\d+/ },
   { domain: 'vm.tiktok.com', regex: /vm\.tiktok\.com\/[\w-]+\/?/ },
   // Snapchat (Spotlight/Stories)
-  { domain: 'snapchat.com', regex: /snapchat\.com\/(add|spotlight|story)\/[\w.-]+\/?/ },
+  { domain: 'snapchat.com', regex: /snapchat\.com\/(?:@[\w.-]+\/)?(add|spotlight|story)\/[\w.-]+\/?/ },
   { domain: 't.snapchat.com', regex: /t\.snapchat\.com\/[\w.-]+\/?/ },
   // Twitter / X (Standard posts)
   { domain: 'twitter.com', regex: /twitter\.com\/\w+\/status\/\d+/ },
