@@ -8,8 +8,8 @@ const ALLOWED_PATTERNS = [
   { domain: 'tiktok.com', regex: /tiktok\.com\/@[\w.-]+\/video\/\d+/ },
   { domain: 'vm.tiktok.com', regex: /vm\.tiktok\.com\/[\w-]+\/?/ },
   // Snapchat (Spotlight/Stories)
-  { domain: 'snapchat.com', regex: /snapchat\.com\/(?:@[\w.-]+\/)?(add|spotlight|story)\/[\w.-]+\/?/ },
-  { domain: 't.snapchat.com', regex: /t\.snapchat\.com\/[\w.-]+\/?/ },
+  { domain: 'snapchat.com', regex: /snapchat\.com\/(?:@[\w.-]+\/)?(add|spotlight|story)\/[^/?#]+\/?/ },
+  { domain: 't.snapchat.com', regex: /t\.snapchat\.com\/[^/?#]+\/?/ },
   // Twitter / X (Standard posts)
   { domain: 'twitter.com', regex: /twitter\.com\/\w+\/status\/\d+/ },
   { domain: 'x.com', regex: /x\.com\/\w+\/status\/\d+/ },
@@ -34,6 +34,11 @@ const validateClipUrl = async (url) => {
         valid: false, 
         error: 'Domain not allowed or invalid format. Only Instagram Reels, TikTok, Snapchat, Twitter, and Reddit links are supported.' 
       };
+    }
+
+    // Skip reachability check for Snapchat as they aggressively block HEAD/bots
+    if (urlObj.hostname.includes('snapchat.com')) {
+      return { valid: true, cleanUrl: trimmedUrl };
     }
 
     // 3. "Real" Check (Reachability)

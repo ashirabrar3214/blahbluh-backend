@@ -236,7 +236,7 @@ class SocketService {
           };
           
           io.to(chatId).emit('new-message', messageData);
-          io.to(chatId).emit('friend-message-received', messageData);
+          // io.to(chatId).emit('friend-message-received', messageData);
         } else {
           // ... your existing random chat logic ...
           console.log(`[SocketService] Random message processing: ${chatId}`);
