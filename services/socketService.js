@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const friendService = require('./friendService');
+const userService = require('./userService');
 const supabase = require('../config/supabase');
 const adminService = require('./adminService');
 const moderationService = require('./moderationService');
@@ -524,6 +525,11 @@ socket.on('disconnect', async () => {
 
   async joinQueue(userId, socketId, queue) {
     console.log(`[SocketService] joinQueue called for ${userId}`);
+
+    // ✅ FIX 1: Promote Guest to Real User (Flush to DB)
+    // If they are already in DB, this does nothing.
+    await userService.promoteGuest(userId);
+
     // Remove existing entry
     const existingIndex = queue.findIndex(u => u.userId === userId);
     if (existingIndex !== -1) {

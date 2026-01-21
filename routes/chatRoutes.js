@@ -10,6 +10,10 @@ const queue = [];
 router.post('/join-queue', banGuard, async (req, res) => {
   try {
     const { userId } = req.body;
+
+    // ✅ FIX: Ensure user exists in DB before joining queue
+    await userService.promoteGuest(userId);
+
     console.log(`[ChatRoutes] 'join-queue' request for userId: ${userId}`);
     const user = await userService.getUser(userId);
     
