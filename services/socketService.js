@@ -31,11 +31,30 @@ class SocketService {
     console.log(`[SocketService] New connection handling started: ${socket.id}`);
     socket.on('register-user', async ({ userId }) => {
       console.log(`[SocketService] 'register-user' received for ${userId} on socket ${socket.id}`);
+      if (!userId) return;
+
+      // 1) If this user already has a socket, kill the old one AND purge stale state
+      const oldSocketId = this.userSessions.get(userId);
+      if (oldSocketId && oldSocketId !== socket.id) {
+        console.log(`[SocketService] Duplicate register-user for ${userId}. Old=${oldSocketId} New=${socket.id}`);
+
+        // Purge any stale state (queue + active chat) tied to this user
+        await this._purgeUserFromQueueAndChat(userId, queue, io);
+
+        // Disconnect old socket hard
+        const oldSocket = io.sockets.sockets.get(oldSocketId);
+        oldSocket?.disconnect(true);
+      } else {
+        // Even if there's no old socket, still purge stale queue/chat
+        await this._purgeUserFromQueueAndChat(userId, queue, io);
+      }
+
+      // 2) Register the new socket
       this.userSockets.set(userId, socket);
       this.userSessions.set(userId, socket.id);
       socket.userId = userId;
       
-      // Update Last Active Timestamp in DB
+      // 3) Update Last Active Timestamp in DB
       await supabase
         .from('users')
         .update({ last_active_at: new Date().toISOString() })
@@ -518,18 +537,62 @@ socket.on('disconnect', async () => {
   }
 
   // finally remove socket mapping
-  for (const [userId, sock] of this.userSockets.entries()) {
-    if (sock === socket) {
-      this.userSockets.delete(userId);
-      console.log(`[SocketService] Removed socket mapping for ${userId}`);
-      break;
-    }
-  }
+    this.userSockets.delete(leavingId);
+    console.log(`[SocketService] Removed socket mapping for ${leavingId}`);
 
   console.log(`User disconnected and removed: ${leavingId}`);
 });
 
 
+  }
+
+  async _purgeUserFromQueueAndChat(userId, queue, io) {
+    if (!userId) return;
+
+    // A) Remove from queue no matter what
+    const qIndex = queue.findIndex(u => u.userId === userId);
+    if (qIndex !== -1) {
+      queue.splice(qIndex, 1);
+      console.log(`[SocketService] Purge: removed ${userId} from queue`);
+    }
+
+    // B) If user was in an active chat, end it + requeue partner (but NOT the user)
+    const getId = (u) => u?.userId ?? u?.id;
+
+    for (const [chatId, chatData] of this.activeChats.entries()) {
+      const inChat = chatData.users?.some(u => getId(u) === userId);
+      if (!inChat) continue;
+
+      console.log(`[SocketService] Purge: ${userId} was in chat ${chatId}`);
+
+      const partner = chatData.users.find(u => getId(u) !== userId);
+      const partnerId = getId(partner);
+
+      if (partnerId) {
+        const partnerSocket = this.userSockets.get(partnerId);
+        if (partnerSocket?.connected) {
+          partnerSocket.emit('partner-disconnected', {
+            chatId,
+            reason: 'refresh',
+            shouldRequeue: true,
+            byUserId: userId
+          });
+          partnerSocket.leave(chatId);
+
+          // requeue partner
+          try {
+            const res = await this.joinQueue(partnerId, partnerSocket.id, queue);
+            partnerSocket.emit('queue-joined', res);
+          } catch (e) {
+            console.error('[SocketService] Purge: failed to requeue partner', e);
+          }
+        }
+      }
+
+      this.activeChats.delete(chatId);
+      console.log(`[SocketService] Purge: chat ${chatId} deleted`);
+      break;
+    }
   }
 
   async joinQueue(userId, socketId, queue) {
