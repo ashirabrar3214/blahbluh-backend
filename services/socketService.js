@@ -205,7 +205,9 @@ class SocketService {
           data.message = validation.cleanUrl;
         }
 
-        const { chatId, message, userId } = data;
+        const { chatId, message } = data;
+        const userId = socket.userId; // Trusted ID attached during register-user
+        data.userId = userId; // Ensure emitted message uses the trusted ID
         
         // 3. STORE & BROADCAST
         if (chatId.startsWith('friend_')) {
