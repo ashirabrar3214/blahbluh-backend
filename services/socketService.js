@@ -176,7 +176,7 @@ class SocketService {
     });
 
     socket.on('send-message', async (data) => {
-      console.log(`[SocketService] 'send-message' received`, data);
+      console.log(`[SocketService] 'send-message' received for chat: ${data.chatId}`);
       
       // 1. SAFETY CHECK: Stop crash if chatId is missing
       if (!data.chatId) {
