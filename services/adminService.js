@@ -31,7 +31,7 @@ class AdminService {
         bannedUsers: bannedCount || 0
       };
     } catch (error) {
-      console.error('[AdminService] Error fetching stats:', error);
+      // console.error('[AdminService] Error fetching stats:', error);
       return { reportedUsers: 0, bannedUsers: 0 };
     }
   }
@@ -73,7 +73,7 @@ class AdminService {
         lastActiveUser: lastActive ? { username: lastActive.username, time: lastActive.last_active_at } : null
       };
     } catch (error) {
-      console.error('Error fetching admin dashboard stats:', error);
+      // console.error('Error fetching admin dashboard stats:', error);
       return {};
     }
   }
@@ -108,7 +108,7 @@ class AdminService {
         avatar: u.pfp
       }));
     } catch (error) {
-      console.error('[AdminService] Error fetching banned users:', error);
+      // console.error('[AdminService] Error fetching banned users:', error);
       return [];
     }
   }
@@ -130,7 +130,7 @@ class AdminService {
       if (error) throw error;
       return true;
     } catch (error) {
-      console.error('[AdminService] Error unbanning user:', error);
+      // console.error('[AdminService] Error unbanning user:', error);
       return false;
     }
   }
@@ -149,7 +149,7 @@ class AdminService {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('[AdminService] Error searching users:', error);
+      // console.error('[AdminService] Error searching users:', error);
       return [];
     }
   }

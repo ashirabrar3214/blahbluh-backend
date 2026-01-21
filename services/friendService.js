@@ -2,7 +2,7 @@ const supabase = require('../config/supabase');
 
 class FriendService {
   async sendFriendRequest(fromUserId, toUserId) {
-    console.log('🔍 Checking existing friend request between:', fromUserId, 'and', toUserId);
+    // console.log('🔍 Checking existing friend request between:', fromUserId, 'and', toUserId);
     
     try {
       // Check for existing request
@@ -14,21 +14,21 @@ class FriendService {
         .eq('status', 'pending')
         .maybeSingle();
 
-      console.log('📄 Existing request check result:', { existing, checkError });
+      // console.log('📄 Existing request check result:', { existing, checkError });
 
       if (existing) {
-        console.log('⚠️ Friend request already exists');
+        // console.log('⚠️ Friend request already exists');
         return { success: false, message: 'Friend request already sent' };
       }
 
-      console.log('💾 Inserting new friend request into database');
+      // console.log('💾 Inserting new friend request into database');
       const insertData = {
         from_user_id: fromUserId,
         to_user_id: toUserId,
         status: 'pending',
         created_at: new Date().toISOString()
       };
-      console.log('📝 Insert data:', insertData);
+      // console.log('📝 Insert data:', insertData);
 
       const { data, error } = await supabase
         .from('friend_requests')
@@ -36,23 +36,23 @@ class FriendService {
         .select()
         .single();
 
-      console.log('📊 Insert result:', { data, error });
+      // console.log('📊 Insert result:', { data, error });
 
       if (error) {
-        console.error('❌ Supabase insert error:', error);
+        // console.error('❌ Supabase insert error:', error);
         return { success: false, message: 'Database not available' };
       }
       
-      console.log('✅ Friend request created successfully:', data);
+      // console.log('✅ Friend request created successfully:', data);
       return { success: true, data };
     } catch (error) {
-      console.error('❌ Friend request service error:', error);
+      // console.error('❌ Friend request service error:', error);
       return { success: false, message: 'Service unavailable' };
     }
   }
 
   async acceptFriendRequest(requestId, userId) {
-    console.log('🔍 Accepting friend request:', requestId, 'for user:', userId);
+    // console.log('🔍 Accepting friend request:', requestId, 'for user:', userId);
     
     const { data: request, error: fetchError } = await supabase
       .from('friend_requests')
@@ -61,10 +61,10 @@ class FriendService {
       .eq('to_user_id', userId)
       .maybeSingle();
 
-    console.log('📄 Friend request data:', { request, fetchError });
+    // console.log('📄 Friend request data:', { request, fetchError });
 
     if (fetchError) {
-      console.error('❌ Error fetching friend request:', fetchError);
+      // console.error('❌ Error fetching friend request:', fetchError);
       throw fetchError;
     }
 
@@ -73,14 +73,14 @@ class FriendService {
     }
 
     // Update request status
-    console.log('🔄 Updating request status to accepted');
+    // console.log('🔄 Updating request status to accepted');
     await supabase
       .from('friend_requests')
       .update({ status: 'accepted' })
       .eq('id', requestId);
 
     // Add to friends table
-    console.log('👥 Adding users to friends table');
+    // console.log('👥 Adding users to friends table');
     const { data, error } = await supabase
       .from('friends')
       .insert([
@@ -89,11 +89,11 @@ class FriendService {
       ]);
 
     if (error) {
-      console.error('❌ Error adding friends:', error);
+      // console.error('❌ Error adding friends:', error);
       throw error;
     }
     
-    console.log('✅ Friend request accepted successfully');
+    // console.log('✅ Friend request accepted successfully');
     return request; // Return the original request data for notifications
   }
 
@@ -109,12 +109,12 @@ class FriendService {
         .eq('status', 'pending');
 
       if (error) {
-        console.error('Supabase error:', error);
+        // console.error('Supabase error:', error);
         return []; // Return empty array instead of throwing
       }
       return data || [];
     } catch (error) {
-      console.error('Database connection error:', error);
+      // console.error('Database connection error:', error);
       return []; // Return empty array for now
     }
   }
@@ -132,7 +132,7 @@ class FriendService {
   }
 
   async removeFriend(userId, friendId) {
-    console.log('💔 Removing friend:', friendId, 'for user:', userId);
+    // console.log('💔 Removing friend:', friendId, 'for user:', userId);
     
     const { data, error } = await supabase
       .from('friends')
@@ -140,7 +140,7 @@ class FriendService {
       .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`);
 
     if (error) {
-      console.error('❌ Error removing friend:', error);
+      // console.error('❌ Error removing friend:', error);
       throw error;
     }
     return data;
@@ -160,7 +160,7 @@ class FriendService {
   }
 
   async unblockUser(userId, blockedUserId) {
-    console.log('🔓 Unblocking user:', blockedUserId, 'for user:', userId);
+    // console.log('🔓 Unblocking user:', blockedUserId, 'for user:', userId);
     
     const { data, error } = await supabase
       .from('blocked_users')
@@ -183,23 +183,23 @@ class FriendService {
   }
 
   async getFriendChats(userId) {
-    console.log('🔍 Getting friend chats for:', userId);
+    // console.log('🔍 Getting friend chats for:', userId);
     try {
       // For now, return empty array since we don't have chat functionality yet
       return [];
     } catch (error) {
-      console.error('❌ Friend chats service error:', error);
+      // console.error('❌ Friend chats service error:', error);
       return [];
     }
   }
 
   async getChatMessages(chatId) {
-    console.log('🔍 Getting messages for chat:', chatId);
+    // console.log('🔍 Getting messages for chat:', chatId);
     try {
       // For now, return empty array since we don't have chat messages yet
       return [];
     } catch (error) {
-      console.error('❌ Chat messages service error:', error);
+      // console.error('❌ Chat messages service error:', error);
       return [];
     }
   }
