@@ -13,6 +13,7 @@ class SocketService {
     this.userSessions = new Map(); // userId -> socketId
     this.userSocketMap = new Map(); // userId -> socketId for queue
     this.queueReference = [];
+    this.disconnectTimers = new Map(); // userId -> { timerId, chatId }
     
     // ✅ NEW: Cache for blocked users (UserId -> Set of Blocked UserIds)
     this.blockedCache = new Map(); 
@@ -32,6 +33,34 @@ class SocketService {
     socket.on('register-user', async ({ userId }) => {
       console.log(`[SocketService] 'register-user' received for ${userId} on socket ${socket.id}`);
       if (!userId) return;
+
+      // Handle Reconnection within Grace Period
+      if (this.disconnectTimers.has(userId)) {
+        const { timerId, chatId } = this.disconnectTimers.get(userId);
+        clearTimeout(timerId);
+        this.disconnectTimers.delete(userId);
+        console.log(`[SocketService] User ${userId} reconnected within grace period for chat ${chatId}. Canceling disconnect.`);
+
+        // Register new socket
+        this.userSockets.set(userId, socket);
+        this.userSessions.set(userId, socket.id);
+        socket.userId = userId;
+        
+        // Re-join the existing chat room
+        socket.join(chatId);
+
+        // Update last active time
+        await supabase
+          .from('users')
+          .update({ last_active_at: new Date().toISOString() })
+          .eq('id', userId);
+
+        console.log(`User re-registered: ${userId} -> ${socket.id}`);
+        socket.emit('registration-confirmed', { userId });
+        
+        // Skip the normal "purge" logic to preserve the chat session
+        return;
+      }
 
       // 1) If this user already has a socket, kill the old one AND purge stale state
       const oldSocketId = this.userSessions.get(userId);
@@ -481,66 +510,79 @@ socket.on('disconnect', async () => {
     return;
   }
 
+  // Immediately clear session, cache, and socket data
   this.userSessions.delete(leavingId);
   this.userSocketMap.delete(leavingId);
-  
-  // ✅ NEW: Clear the block cache
   this.blockedCache.delete(leavingId);
-
-  console.log(`[SocketService] Cleaned up sessions for ${leavingId}`);
-
-  // remove from queue if present
+  this.userSockets.delete(leavingId); // A disconnected user has no active socket
+  
+  // Remove from queue if present
   const qIndex = queue.findIndex(u => u.userId === leavingId);
   if (qIndex !== -1) {
     queue.splice(qIndex, 1);
-    console.log(`[SocketService] Removed ${leavingId} from queue`);
+    console.log(`[SocketService] Removed ${leavingId} from queue on disconnect.`);
   }
 
   const getId = (u) => u?.userId ?? u?.id;
 
-  // if they were in an active chat, notify + requeue partner
+  // Check if the user was in an active chat
+  let userChatId = null;
+  let userChatData = null;
   for (const [chatId, chatData] of this.activeChats.entries()) {
-    const inChat = chatData.users.some(u => getId(u) === leavingId);
-    if (!inChat) continue;
-
-    console.log(`[SocketService] Disconnected user ${leavingId} was in chat ${chatId}`);
-
-    const partner = chatData.users.find(u => getId(u) !== leavingId);
-    const partnerId = getId(partner);
-
-    if (partnerId) {
-      const partnerSocket = this.userSockets.get(partnerId);
-      if (partnerSocket?.connected) {
-        console.log(`[SocketService] Notifying partner ${partnerId} of disconnect`);
-        partnerSocket.emit('partner-disconnected', {
-          chatId,
-          reason: 'disconnect',
-          shouldRequeue: true,
-          byUserId: leavingId
-        });
-
-        partnerSocket.leave(chatId);
-
-        try {
-          console.log(`[SocketService] Requeueing partner ${partnerId}`);
-          const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
-          partnerSocket.emit('queue-joined', result);
-        } catch (e) {
-          console.error('Error re-joining partner to queue:', e);
-        }
-      }
+    if (chatData.users.some(u => getId(u) === leavingId)) {
+      userChatId = chatId;
+      userChatData = chatData;
+      break;
     }
-
-    this.activeChats.delete(chatId);
-    console.log(`[SocketService] Chat ${chatId} deleted due to disconnect`);
-    break;
   }
 
-  // finally remove socket mapping
-    this.userSockets.delete(leavingId);
-    console.log(`[SocketService] Removed socket mapping for ${leavingId}`);
+  // If in a chat, start the grace period timer
+  if (userChatId && userChatData) {
+    console.log(`[SocketService] User ${leavingId} was in chat ${userChatId}. Starting 10s disconnect timer.`);
 
-  console.log(`User disconnected and removed: ${leavingId}`);
+    const timerId = setTimeout(async () => {
+      console.log(`[SocketService] Grace period ended for ${leavingId}. Destroying chat ${userChatId}.`);
+
+      // Find partner and notify them
+      const partner = userChatData.users.find(u => getId(u) !== leavingId);
+      const partnerId = getId(partner);
+
+      if (partnerId) {
+        const partnerSocket = this.userSockets.get(partnerId);
+        if (partnerSocket?.connected) {
+          console.log(`[SocketService] Notifying partner ${partnerId} of final disconnect.`);
+          partnerSocket.emit('partner-disconnected', {
+            chatId: userChatId,
+            reason: 'disconnect',
+            shouldRequeue: true,
+            byUserId: leavingId
+          });
+          partnerSocket.leave(userChatId);
+
+          try {
+            console.log(`[SocketService] Requeueing partner ${partnerId} after grace period.`);
+            const result = await this.joinQueue(partnerId, partnerSocket.id, queue);
+            partnerSocket.emit('queue-joined', result);
+          } catch (e) {
+            console.error('Error re-joining partner to queue after grace period:', e);
+          }
+        }
+      }
+
+      // Clean up the chat and the timer
+      this.activeChats.delete(userChatId);
+      this.disconnectTimers.delete(leavingId);
+      console.log(`[SocketService] Chat ${userChatId} and disconnect timer deleted for ${leavingId}.`);
+    }, 10000); // 10-second grace period
+
+    // Store the timer so it can be canceled on reconnect
+    this.disconnectTimers.set(leavingId, { timerId, chatId: userChatId });
+
+  } else {
+    console.log(`[SocketService] Disconnected user ${leavingId} was not in an active chat. No grace period needed.`);
+  }
+  
+  console.log(`[SocketService] User ${leavingId} disconnected. Session cleanup initiated.`);
 });
 
 
