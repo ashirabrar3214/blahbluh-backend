@@ -720,99 +720,121 @@ class SocketService {
   }
 
   async tryMatchUsers(queue) {
+    // 1. Concurrency Lock: Ensure only one matching loop runs at a time
     if (this.isMatching) return;
     this.isMatching = true;
 
-    if (queue.length >= 2) {
-      // console.log(`[SocketService] tryMatchUsers processing queue. Size: ${queue.length}`);
-    }
-    while (queue.length >= 2) {
-      const raw1 = queue[0];
-      const raw2 = queue[1];
+    let pairsProcessed = 0;
+    const YIELD_THRESHOLD = 50; // Yield every 50 pairs
 
-      const id1 = raw1?.userId ?? raw1?.id;
-      const id2 = raw2?.userId ?? raw2?.id;
+    try {
+      // 2. Loop Protection: Check queue length at the start of every iteration
+      while (queue.length >= 2) {
+        
+        // --- [The Expert Fix] ---
+        // Every 50 pairs, pause for 0ms to let the Event Loop process other events
+        // (like new user connections, ping/pongs, or HTTP requests)
+        if (pairsProcessed % YIELD_THRESHOLD === 0) {
+          await new Promise(resolve => setImmediate(resolve));
+        }
+        pairsProcessed++;
+        // ------------------------
 
-      // console.log(`[SocketService] Attempting to match ${id1} and ${id2}`);
+        const raw1 = queue[0];
+        const raw2 = queue[1];
 
-      // If queue contains garbage entries, drop them safely
-      if (!id1) { queue.shift(); /* console.log(`[SocketService] Invalid user 1, removed`); */ continue; }
-      if (!id2) { queue.splice(1, 1); /* console.log(`[SocketService] Invalid user 2, removed`); */ continue; }
+        const id1 = raw1?.userId ?? raw1?.id;
+        const id2 = raw2?.userId ?? raw2?.id;
 
-      const socket1 = this.userSockets.get(id1);
-      const socket2 = this.userSockets.get(id2);
+        // console.log(`[SocketService] Attempting to match ${id1} and ${id2}`);
 
-      if (!socket1?.connected || !socket2?.connected) {
-        // console.log(`[SocketService] One or both sockets disconnected. S1: ${socket1?.connected}, S2: ${socket2?.connected}`);
-        if (!socket1?.connected) queue.shift();
-        if (queue.length > 1 && !socket2?.connected) queue.splice(1, 1);
-        continue;
-      }
+        // If queue contains garbage entries, drop them safely
+        if (!id1) { queue.shift(); /* console.log(`[SocketService] Invalid user 1, removed`); */ continue; }
+        if (!id2) { queue.splice(1, 1); /* console.log(`[SocketService] Invalid user 2, removed`); */ continue; }
 
-      // ✅ NEW: Instant Memory Check
-      const blocks1 = this.blockedCache.get(id1);
-      const blocks2 = this.blockedCache.get(id2);
+        const socket1 = this.userSockets.get(id1);
+        const socket2 = this.userSockets.get(id2);
 
-      const isBlocked = (blocks1 && blocks1.has(id2)) || (blocks2 && blocks2.has(id1));
+        if (!socket1?.connected || !socket2?.connected) {
+          // console.log(`[SocketService] One or both sockets disconnected. S1: ${socket1?.connected}, S2: ${socket2?.connected}`);
+          if (!socket1?.connected) queue.shift();
+          if (queue.length > 1 && !socket2?.connected) queue.splice(1, 1);
+          continue;
+        }
 
-      if (isBlocked) {
-        // console.log(`[SocketService] Blocked match prevented: ${id1} <-> ${id2}`);
-        // Skip pairing: keep User 1, remove User 2 (try next person for User 1)
-        queue.splice(1, 1); 
-        continue;
-      }
+        // ✅ NEW: Instant Memory Check
+        const blocks1 = this.blockedCache.get(id1);
+        const blocks2 = this.blockedCache.get(id2);
 
-      // Remove them from queue now (pairing is happening)
-      queue.splice(0, 2);
-      // console.log(`[SocketService] Users removed from queue for pairing`);
+        const isBlocked = (blocks1 && blocks1.has(id2)) || (blocks2 && blocks2.has(id1));
 
-      // 🔥 Ensure usernames exist (fixes Stranger/?)
-      let u1 = { userId: id1, username: raw1?.username };
-      let u2 = { userId: id2, username: raw2?.username };
+        if (isBlocked) {
+          // console.log(`[SocketService] Blocked match prevented: ${id1} <-> ${id2}`);
+          // Skip pairing: keep User 1, remove User 2 (try next person for User 1)
+          queue.splice(1, 1); 
+          continue;
+        }
 
-      if (!u1.username || !u2.username) {
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('id, username')
-            .in('id', [id1, id2]);
+        // Remove them from queue now (pairing is happening)
+        queue.splice(0, 2);
+        // console.log(`[SocketService] Users removed from queue for pairing`);
 
-          if (!error && Array.isArray(data)) {
-            const map = new Map(data.map(x => [x.id, x.username]));
-            u1.username = u1.username || map.get(id1) || 'Stranger';
-            u2.username = u2.username || map.get(id2) || 'Stranger';
-          } else {
+        // 🔥 Ensure usernames exist (fixes Stranger/?)
+        let u1 = { userId: id1, username: raw1?.username };
+        let u2 = { userId: id2, username: raw2?.username };
+
+        if (!u1.username || !u2.username) {
+          try {
+            const { data, error } = await supabase
+              .from('users')
+              .select('id, username')
+              .in('id', [id1, id2]);
+
+            if (!error && Array.isArray(data)) {
+              const map = new Map(data.map(x => [x.id, x.username]));
+              u1.username = u1.username || map.get(id1) || 'Stranger';
+              u2.username = u2.username || map.get(id2) || 'Stranger';
+            } else {
+              u1.username = u1.username || 'Stranger';
+              u2.username = u2.username || 'Stranger';
+            }
+          } catch (e) {
             u1.username = u1.username || 'Stranger';
             u2.username = u2.username || 'Stranger';
           }
-        } catch (e) {
-          u1.username = u1.username || 'Stranger';
-          u2.username = u2.username || 'Stranger';
         }
+
+        const chatId = uuidv4();
+        this.activeChats.set(chatId, { 
+          users: [u1, u2], 
+          messages: [],
+          present: new Set([id1, id2]) 
+        });
+
+        // console.log(`[SocketService] Active chat created: ${chatId}`);
+
+        // ✅ CRITICAL: server-side room join (do NOT rely on client join-chat)
+        socket1.join(chatId);
+        socket2.join(chatId);
+        // console.log(`[SocketService] Forced room join: ${chatId} -> ${id1}, ${id2}`);
+
+        // now emit paired
+        socket1.emit('chat-paired', { chatId, users: [u1, u2] });
+        socket2.emit('chat-paired', { chatId, users: [u1, u2] });
+
+        // console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
       }
-
-      const chatId = uuidv4();
-      this.activeChats.set(chatId, { 
-        users: [u1, u2], 
-        messages: [],
-        present: new Set([id1, id2]) 
-      });
-
-      // console.log(`[SocketService] Active chat created: ${chatId}`);
-
-      // ✅ CRITICAL: server-side room join (do NOT rely on client join-chat)
-      socket1.join(chatId);
-      socket2.join(chatId);
-      // console.log(`[SocketService] Forced room join: ${chatId} -> ${id1}, ${id2}`);
-
-      // now emit paired
-      socket1.emit('chat-paired', { chatId, users: [u1, u2] });
-      socket2.emit('chat-paired', { chatId, users: [u1, u2] });
-
-      // console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
+    } catch (err) {
+      console.error("[SocketService] Matching loop error:", err);
+    } finally {
+      // 3. Always release the lock
+      this.isMatching = false;
+      
+      // 4. Recursive Check: If users joined while we were yielding, run again immediately
+      if (queue.length >= 2) {
+        this.tryMatchUsers(queue);
+      }
     }
-    
-    this.isMatching = false;
   }
 
   startStatsInterval() {
