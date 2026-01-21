@@ -147,6 +147,32 @@ class SocketService {
       socket.emit('queue-heartbeat-response', { inQueue: userInQueue });
     });
 
+    // ✅ NEW: Handle status check from client waking up
+    socket.on('check-active-chat', ({ chatId, userId }) => {
+      // 1. If it's a Friend Chat, ignore (they are always active)
+      if (chatId.startsWith('friend_')) return;
+
+      // 2. Check if the Random Chat still exists in server memory
+      const chatData = this.activeChats.get(chatId);
+      const isActive = chatData && chatData.users.some(u => (u.userId || u.id) === userId);
+
+      if (!isActive) {
+        console.log(`[SocketService] User ${userId} checked dead chat ${chatId}. Force disconnecting.`);
+        
+        // 3. Trigger the EXISTING 'partner-disconnected' event on the client.
+        // This reuses your App.js logic to force the user back to Home.
+        socket.emit('partner-disconnected', {
+          chatId,
+          reason: 'timeout',
+          shouldRequeue: false // Don't put them in queue, just kick to home
+        });
+      } else {
+        // 4. If chat IS active, ensure this user is actually in the socket room
+        // (Fixes case where they reconnected but register-user didn't join them yet)
+        socket.join(chatId);
+      }
+    });
+
     // Atomic skip partner (robust + no double-skip fallout)
     socket.on('skip-partner', async ({ chatId, userId, reason }) => {
       console.log(`[SocketService] 'skip-partner' received. User: ${userId}, Chat: ${chatId}, Reason: ${reason}`);
