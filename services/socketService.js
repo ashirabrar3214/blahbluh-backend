@@ -13,8 +13,13 @@ class SocketService {
     this.userSessions = new Map(); // userId -> socketId
     this.userSocketMap = new Map(); // userId -> socketId for queue
     this.queueReference = [];
+    
+    // ✅ NEW: Cache for blocked users (UserId -> Set of Blocked UserIds)
+    this.blockedCache = new Map(); 
+
     this.io = null;
     this.statsInterval = null;
+    this.isMatching = false; // (Recommended from previous advice)
   }
 
   handleConnection(io, socket, queue) {
@@ -459,6 +464,10 @@ socket.on('disconnect', async () => {
 
   this.userSessions.delete(leavingId);
   this.userSocketMap.delete(leavingId);
+  
+  // ✅ NEW: Clear the block cache
+  this.blockedCache.delete(leavingId);
+
   console.log(`[SocketService] Cleaned up sessions for ${leavingId}`);
 
   // remove from queue if present
@@ -537,6 +546,33 @@ socket.on('disconnect', async () => {
       console.log(`[SocketService] Removed existing queue entry for ${userId}`);
     }
 
+    // ✅ NEW: Fetch Blocked Users ONCE and Cache them
+    try {
+      // 1. Fetch rows where I blocked others
+      const { data: blocks } = await supabase
+        .from('blocked_users')
+        .select('blocked_user_id')
+        .eq('user_id', userId);
+        
+      // 2. Fetch my own "blocked_users" array column (legacy support)
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('blocked_users')
+        .eq('id', userId)
+        .single();
+
+      // Combine them into a fast Set
+      const blockedSet = new Set();
+      blocks?.forEach(b => blockedSet.add(b.blocked_user_id));
+      userRow?.blocked_users?.forEach(id => blockedSet.add(id));
+
+      this.blockedCache.set(userId, blockedSet);
+      console.log(`[SocketService] Cached ${blockedSet.size} blocks for ${userId}`);
+    } catch (err) {
+      console.error('Error caching blocks:', err);
+      this.blockedCache.set(userId, new Set()); // Safe fallback
+    }
+
     // 🔥 ALWAYS hydrate from DB
     const { data: user, error } = await supabase
       .from('users')
@@ -567,6 +603,9 @@ socket.on('disconnect', async () => {
   }
 
   async tryMatchUsers(queue) {
+    if (this.isMatching) return;
+    this.isMatching = true;
+
     if (queue.length >= 2) {
       console.log(`[SocketService] tryMatchUsers processing queue. Size: ${queue.length}`);
     }
@@ -593,33 +632,17 @@ socket.on('disconnect', async () => {
         continue;
       }
 
-      // Check if users have blocked each other
-      try {
-        // 1. Check blocked_users table (via friendService)
-        const isBlockedInTable = await friendService.isBlocked(id1, id2);
+      // ✅ NEW: Instant Memory Check
+      const blocks1 = this.blockedCache.get(id1);
+      const blocks2 = this.blockedCache.get(id2);
 
-        // 2. Double check: users table blocked_users array (A blocks B or B blocks A)
-        let isBlockedInArray = false;
-        const { data: usersData } = await supabase
-          .from('users')
-          .select('id, blocked_users')
-          .in('id', [id1, id2]);
+      const isBlocked = (blocks1 && blocks1.has(id2)) || (blocks2 && blocks2.has(id1));
 
-        if (usersData) {
-          const u1 = usersData.find(u => u.id === id1);
-          const u2 = usersData.find(u => u.id === id2);
-          if (u1?.blocked_users?.includes(id2)) isBlockedInArray = true;
-          if (u2?.blocked_users?.includes(id1)) isBlockedInArray = true;
-        }
-
-        if (isBlockedInTable || isBlockedInArray) {
-          console.log(`[SocketService] Users ${id1} and ${id2} are blocked. Skipping match.`);
-          // Skip this pairing, remove user2 and try again
-          queue.splice(1, 1);
-          continue;
-        }
-      } catch (error) {
-        console.error('Error checking blocked users:', error);
+      if (isBlocked) {
+        console.log(`[SocketService] Blocked match prevented: ${id1} <-> ${id2}`);
+        // Skip pairing: keep User 1, remove User 2 (try next person for User 1)
+        queue.splice(1, 1); 
+        continue;
       }
 
       // Remove them from queue now (pairing is happening)
@@ -671,6 +694,8 @@ socket.on('disconnect', async () => {
 
       console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
     }
+    
+    this.isMatching = false;
   }
 
   startStatsInterval() {
