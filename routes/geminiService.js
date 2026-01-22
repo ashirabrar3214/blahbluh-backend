@@ -59,7 +59,7 @@ async function getWorkingModelPath(apiKey) {
 
   cachedModelPath = picked; // keep full "models/..." path
   cachedAt = now;
-  console.log("[Gemini] Picked model:", cachedModelPath);
+  //console.log("[Gemini] Picked model:", cachedModelPath);
   return cachedModelPath;
 }
 
@@ -153,7 +153,7 @@ async function fetchGeminiPrompts(userId) {
     const data = await response.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    console.log("[Gemini] Raw output:", JSON.stringify(text));
+    //console.log("[Gemini] Raw output:", JSON.stringify(text));
 
     try {
       const parsed = JSON.parse(text);
@@ -191,23 +191,23 @@ async function fetchGeminiPrompts(userId) {
 
 module.exports = {
   async generateConversationStarter(userId) {
-    console.log(`[Gemini] generateConversationStarter called for userId: ${userId}`);
+    //console.log(`[Gemini] generateConversationStarter called for userId: ${userId}`);
 
     // 1. Check cache
     if (userId && promptCache.has(userId)) {
       const cached = promptCache.get(userId);
       if (cached && cached.length > 0) {
         const next = cached.shift();
-        console.log(`[Gemini] Returning cached prompt. Remaining: ${cached.length}`);
+        //console.log(`[Gemini] Returning cached prompt. Remaining: ${cached.length}`);
 
         // Refill if low
         if (cached.length <= 2) {
-          console.log(`[Gemini] Cache low (${cached.length}), refilling...`);
+          //console.log(`[Gemini] Cache low (${cached.length}), refilling...`);
           fetchGeminiPrompts(userId).then((newPrompts) => {
             if (newPrompts.length > 0) {
               const current = promptCache.get(userId) || [];
               promptCache.set(userId, current.concat(newPrompts));
-              console.log(`[Gemini] Refilled cache. New size: ${promptCache.get(userId).length}`);
+              //console.log(`[Gemini] Refilled cache. New size: ${promptCache.get(userId).length}`);
             }
           });
         }
@@ -223,7 +223,7 @@ module.exports = {
       if (userId) {
         promptCache.set(userId, prompts);
       }
-      console.log(`[Gemini] Generated ${prompts.length + 1} prompts. Returning 1.`);
+      //console.log(`[Gemini] Generated ${prompts.length + 1} prompts. Returning 1.`);
       return first;
     }
 
