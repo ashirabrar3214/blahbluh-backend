@@ -762,15 +762,15 @@ class SocketService {
 
     let pairsProcessed = 0;
     // 1. INCREASE BATCH SIZE: Process more users before yielding to reduce overhead
-    const BATCH_SIZE = 50; 
+    const BATCH_SIZE = 10; 
 
     try {
       while (queue.length >= 2) {
         
         // 2. THROTTLE: Use setTimeout to force this to the BACK of the event loop
         if (pairsProcessed % BATCH_SIZE === 0 && pairsProcessed > 0) {
-          // Wait 5ms to let the server handle HTTP requests (Logins)
-          await new Promise(resolve => setTimeout(resolve, 5));
+          // Wait 10ms to let the server handle HTTP requests (Logins)
+          await new Promise(resolve => setTimeout(resolve, 10));
         }
         pairsProcessed++;
 
