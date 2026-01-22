@@ -21,6 +21,9 @@ class SocketService {
     this.io = null;
     this.statsInterval = null;
     this.isMatching = false; // (Recommended from previous advice)
+
+    // ✅ 1. Start the Janitor immediately
+    this.startQueueJanitor();
   }
 
   handleConnection(io, socket, queue) {
@@ -88,6 +91,13 @@ class SocketService {
       socket.userId = userId;
       await supabase.from('users').update({ last_active_at: new Date().toISOString() }).eq('id', userId);
       socket.emit('registration-confirmed', { userId });
+    });
+
+    // ✅ NEW: Handle Explicit Page Refresh/Close
+    socket.on('page-unload', () => {
+      // Mark this socket as "Killing itself intentionally"
+      socket.isRefreshing = true;
+      console.log(`[SocketService] User ${socket.userId} is refreshing/leaving. Skipping grace period.`);
     });
 
     socket.on('join-queue', async (data) => {
@@ -525,32 +535,59 @@ class SocketService {
       socket.emit('admin-search-results', results);
     });
 
-    // 2. DISCONNECT (Start Grace Period)
+    // 2. DISCONNECT (Modified to check flag)
     socket.on('disconnect', async () => {
       const leavingId = socket.userId;
       if (!leavingId) return;
 
-      // Clean immediate maps
+      // 1. Always cleanup maps immediately
       this.userSessions.delete(leavingId);
       this.userSocketMap.delete(leavingId);
       this.userSockets.delete(leavingId);
       this.blockedCache.delete(leavingId);
       
-      // Remove from queue immediately
+      // 2. Always remove from queue immediately
       const qIndex = queue.findIndex(u => u.userId === leavingId);
       if (qIndex !== -1) queue.splice(qIndex, 1);
 
-      // Check Active Chats
+      // 3. Handle Active Chats
       const getId = (u) => u?.userId ?? u?.id;
       for (const [chatId, chatData] of this.activeChats.entries()) {
         if (chatData.users.some(u => getId(u) === leavingId)) {
           
-          // console.log(`[SocketService] User ${leavingId} disconnected. Notify partner & wait.`);
-          
-          // ✅ NOTIFY PARTNER: "Reconnecting..."
-          io.to(chatId).emit('partner-status', { status: 'reconnecting' });
+          // 🛑 CHECK FLAG: If intentional refresh, SKIP TIMER
+          if (socket.isRefreshing) {
+             console.log(`[SocketService] Instant cleanup for ${leavingId} (Refresh)`);
+             
+             // Notify partner immediately
+             io.to(chatId).emit('partner-disconnected', {
+                chatId,
+                reason: 'disconnect',
+                shouldRequeue: true,
+                byUserId: leavingId
+             });
 
-          // Start 10s Timer
+             // Requeue partner immediately (optional, or let them handle it)
+             const partner = chatData.users.find(u => getId(u) !== leavingId);
+             const partnerId = getId(partner);
+             if (partnerId) {
+                const s = this.userSockets.get(partnerId);
+                if (s && s.connected) {
+                  s.leave(chatId);
+                  // Auto-requeue partner logic here if desired
+                  // ...
+                }
+             }
+             
+             // Destroy chat
+             this.activeChats.delete(chatId);
+             return; // ✅ EXIT HERE (Do not start 10s timer)
+          }
+
+          // ... (Your Existing 10s Timer Logic for Glitches) ...
+          console.log(`[SocketService] User ${leavingId} disconnected (Glitch?). Starting 10s timer.`);
+          io.to(chatId).emit('partner-status', { status: 'reconnecting' });
+          
           const timer = setTimeout(async () => {
             // console.log(`[SocketService] Timer expired for ${leavingId}. Killing chat.`);
             this.disconnectTimers.delete(leavingId);
@@ -582,7 +619,7 @@ class SocketService {
             this.activeChats.delete(chatId);
 
           }, 10000); // 10 seconds
-
+          
           this.disconnectTimers.set(leavingId, timer);
           break;
         }
@@ -875,6 +912,44 @@ class SocketService {
     };
   }
 
+  // ✅ 2. Add the Janitor Function
+  startQueueJanitor() {
+    console.log('[Janitor Jose Gonzales] Service started. Sweeping queue every 30s.');
+    
+    setInterval(() => {
+      if (!this.queueReference || this.queueReference.length === 0) return;
+
+      const initialCount = this.queueReference.length;
+      const now = Date.now();
+
+      // Iterate BACKWARDS so we can remove items safely
+      for (let i = this.queueReference.length - 1; i >= 0; i--) {
+        const user = this.queueReference[i];
+        const socket = this.userSockets.get(user.userId);
+
+        // 🧹 SWEEP CRITERIA:
+        // 1. Socket object doesn't exist?
+        // 2. Socket claims it's disconnected?
+        if (!socket || !socket.connected) {
+          
+          // Remove from queue
+          this.queueReference.splice(i, 1);
+          
+          // Clean up memory maps
+          this.userSockets.delete(user.userId);
+          this.userSessions.delete(user.userId);
+          this.userSocketMap.delete(user.userId);
+          
+          console.log(`[Janitor] Swept ghost user: ${user.userId}`);
+        }
+      }
+
+      const finalCount = this.queueReference.length;
+      if (initialCount !== finalCount) {
+        console.log(`[Janitor] Cleanup complete. Removed ${initialCount - finalCount} ghosts. Queue size: ${finalCount}`);
+      }
+    }, 30000); // Run every 30 seconds
+  }
 }
 
 module.exports = new SocketService();
