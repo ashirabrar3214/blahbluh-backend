@@ -720,25 +720,22 @@ class SocketService {
   }
 
   async tryMatchUsers(queue) {
-    // 1. Concurrency Lock: Ensure only one matching loop runs at a time
     if (this.isMatching) return;
     this.isMatching = true;
 
     let pairsProcessed = 0;
-    const YIELD_THRESHOLD = 50; // Yield every 50 pairs
+    // 1. INCREASE BATCH SIZE: Process more users before yielding to reduce overhead
+    const BATCH_SIZE = 50; 
 
     try {
-      // 2. Loop Protection: Check queue length at the start of every iteration
       while (queue.length >= 2) {
         
-        // --- [The Expert Fix] ---
-        // Every 50 pairs, pause for 0ms to let the Event Loop process other events
-        // (like new user connections, ping/pongs, or HTTP requests)
-        if (pairsProcessed % YIELD_THRESHOLD === 0) {
-          await new Promise(resolve => setImmediate(resolve));
+        // 2. THROTTLE: Use setTimeout to force this to the BACK of the event loop
+        if (pairsProcessed % BATCH_SIZE === 0 && pairsProcessed > 0) {
+          // Wait 5ms to let the server handle HTTP requests (Logins)
+          await new Promise(resolve => setTimeout(resolve, 5));
         }
         pairsProcessed++;
-        // ------------------------
 
         const raw1 = queue[0];
         const raw2 = queue[1];
