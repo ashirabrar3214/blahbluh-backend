@@ -689,15 +689,12 @@ class SocketService {
   async joinQueue(userId, socketId, queue) {
     // console.log(`[SocketService] joinQueue called for ${userId}`);
 
-    // ✅ FIX 1: Promote Guest to Real User (Flush to DB)
-    // If they are already in DB, this does nothing.
-    await userService.promoteGuest(userId);
-
+    // --- FIX: Removed promoteGuest call because users are now DB-native ---
+    
     // Remove existing entry
     const existingIndex = queue.findIndex(u => u.userId === userId);
     if (existingIndex !== -1) {
       queue.splice(existingIndex, 1);
-      // console.log(`[SocketService] Removed existing queue entry for ${userId}`);
     }
 
     // ✅ NEW: Fetch Blocked Users ONCE and Cache them
@@ -721,7 +718,6 @@ class SocketService {
       userRow?.blocked_users?.forEach(id => blockedSet.add(id));
 
       this.blockedCache.set(userId, blockedSet);
-      // console.log(`[SocketService] Cached ${blockedSet.size} blocks for ${userId}`);
     } catch (err) {
       console.error('Error caching blocks:', err);
       this.blockedCache.set(userId, new Set()); // Safe fallback
@@ -735,11 +731,8 @@ class SocketService {
       .single();
 
     if (error || !user) {
-      //console.error('joinQueue: failed to hydrate user', userId);
       return { success: false };
     }
-
-    // console.log(`[SocketService] Hydrated user for queue: ${user.username}`);
 
     this.userSocketMap.set(userId, socketId);
 
@@ -747,8 +740,6 @@ class SocketService {
       userId: user.id,
       username: user.username
     });
-
-    // console.log(`[SocketService] User ${userId} added to queue. Position: ${queue.length}`);
 
     return {
       queuePosition: queue.length,
