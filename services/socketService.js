@@ -749,13 +749,14 @@ class SocketService {
 
   async deductMatch(userId) {
     try {
+      // 1. Get current balance
       const { data: user } = await supabase
         .from('users')
         .select('matches_remaining')
         .eq('id', userId)
         .single();
 
-      // Decrement if they have matches (and not infinite -1)
+      // 2. Subtract 1 (No "seen" checks, no history checks)
       if (user && user.matches_remaining > 0) {
         await supabase
           .from('users')
@@ -867,9 +868,11 @@ class SocketService {
         socket1.emit('chat-paired', { chatId, users: [u1, u2] });
         socket2.emit('chat-paired', { chatId, users: [u1, u2] });
 
-        // ✅ NEW: Deduct matches here (This counts the Pair)
-        // this.deductMatch(id1); // Moved to join-queue endpoint
-        // this.deductMatch(id2); // Moved to join-queue endpoint
+        // ✅ DEDUCT MATCHES NOW
+        // This runs every time a pair is formed. 
+        // If they match User A 3 times, this runs 3 times.
+        this.deductMatch(id1);
+        this.deductMatch(id2);
 
         // console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
       }

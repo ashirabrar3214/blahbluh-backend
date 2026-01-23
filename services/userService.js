@@ -48,13 +48,12 @@ class UserService {
 
   // 3. Helper for Daily Reset
   async checkDailyReset(user) {
-    // Rule: Guests (or null status) do NOT get daily reset. Only explicit is_guest === false gets it.
     if (user.is_guest !== false) return user; 
     
-    // If last_match_reset is missing/null, treat as epoch (needs reset)
     const lastReset = user.last_match_reset ? new Date(user.last_match_reset) : new Date(0);
     const now = new Date();
     
+    // If it's a new day, just give them 50 matches.
     if (lastReset.toDateString() !== now.toDateString()) {
       const { data } = await supabase
         .from('users')

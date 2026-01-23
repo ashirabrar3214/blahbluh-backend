@@ -28,8 +28,8 @@ router.post('/join-queue', banGuard, async (req, res) => {
       });
     }
 
-    // ✅ NEW: Decrement matches immediately to prevent race conditions
-    await userService.updateUser(userId, { matches_remaining: user.matches_remaining - 1 });
+    // REMOVED: await userService.updateUser(...) 
+    // We will deduct in socketService when they actually get a partner.
 
     // --- FIX END ---
 
