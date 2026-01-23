@@ -4,17 +4,23 @@ const socketService = require('../services/socketService');
 const geminiService = require('./geminiService');
 const router = express.Router();
 const banGuard = require('../middleware/banGuard');
+const supabase = require('../config/supabase');
 
 const queue = [];
 
 router.post('/join-queue', banGuard, async (req, res) => {
   try {
     const { userId, tags } = req.body;
-    
-    // 1. Check Matches
-    const user = await userService.getUser(userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
 
+    // --- FIX START ---
+    // 1. FETCH USER FIRST
+    const user = await userService.getUser(userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // 2. NOW IT IS SAFE TO CHECK MATCHES
     if (user.matches_remaining <= 0) {
       return res.status(403).json({ 
         error: 'Out of matches', 
@@ -22,14 +28,12 @@ router.post('/join-queue', banGuard, async (req, res) => {
       });
     }
 
-    // 2. Decrement Match Count
+    // 3. DECREMENT MATCHES
     await supabase
       .from('users')
       .update({ matches_remaining: user.matches_remaining - 1 })
       .eq('id', userId);
-
-    // ✅ FIX: Ensure user exists in DB before joining queue
-    await userService.promoteGuest(userId);
+    // --- FIX END ---
 
     console.log(`[ChatRoutes] 'join-queue' request for userId: ${userId}`);
     
@@ -43,9 +47,9 @@ router.post('/join-queue', banGuard, async (req, res) => {
     const position = queue.findIndex(u => u.userId === userId) + 1;
     console.log(`[ChatRoutes] Sending queue response for ${userId}. Position: ${position}`);
     res.json({ userId: user.id, username: user.username, queuePosition: position });
-  } catch (error) {
-    console.error(`[ChatRoutes] Error in join-queue:`, error);
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    console.error('Join Queue Error:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
