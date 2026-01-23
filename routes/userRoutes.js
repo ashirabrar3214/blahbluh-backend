@@ -265,6 +265,7 @@ router.put('/:userId', async (req, res) => {
     // ONLY allow real DB columns (prevents password/uid/isLogin/etc from breaking updates)
     const allowed = new Set([
       'username',
+      'name',
       'gender',
       'country',
       'age',
@@ -276,6 +277,7 @@ router.put('/:userId', async (req, res) => {
       'total_rating',
       'total_rating_count',
       'is_reported',
+      'pfp_background',
     ]);
 
     const updates = {};
