@@ -115,6 +115,23 @@ class SocketService {
           return; // Stop here, do not add to queue
         }
 
+        // ✅ 2. NEW: CHECK MATCH LIMIT (Add this block)
+        const { data: user } = await supabase
+          .from('users')
+          .select('matches_remaining, is_guest')
+          .eq('id', userId)
+          .single();
+
+        // If user exists and has 0 matches (and isn't infinite -1)
+        if (user && user.matches_remaining === 0) {
+           // Emit error so frontend knows to show popup (if listening)
+           socket.emit('match-error', { 
+             code: user.is_guest ? 'GUEST_LIMIT' : 'DAILY_LIMIT',
+             error: 'Out of matches' 
+           });
+           return; // 🛑 STOP HERE. Do not let them join the queue.
+        }
+
         // console.log(`User ${userId} joined queue with tags: ${tags}`);
         const result = await this.joinQueue(userId, socket.id, queue);
         socket.emit('queue-joined', result);
