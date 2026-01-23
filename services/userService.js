@@ -125,7 +125,14 @@ class UserService {
     const username = preferredUsername || `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
     const { data, error } = await supabase
       .from('users')
-      .insert({ id: userId, username })
+      .insert({
+        id: userId,
+        username,
+        age: 18,
+        gender: 'prefer-not-to-say',
+        country: 'Other',
+        interests: ['bored']
+      })
       .select().single();
 
     if (error) throw error;
