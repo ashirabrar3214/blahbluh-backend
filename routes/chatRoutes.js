@@ -9,13 +9,29 @@ const queue = [];
 
 router.post('/join-queue', banGuard, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId, tags } = req.body;
+    
+    // 1. Check Matches
+    const user = await userService.getUser(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    if (user.matches_remaining <= 0) {
+      return res.status(403).json({ 
+        error: 'Out of matches', 
+        code: user.is_guest ? 'GUEST_LIMIT' : 'DAILY_LIMIT' 
+      });
+    }
+
+    // 2. Decrement Match Count
+    await supabase
+      .from('users')
+      .update({ matches_remaining: user.matches_remaining - 1 })
+      .eq('id', userId);
 
     // ✅ FIX: Ensure user exists in DB before joining queue
     await userService.promoteGuest(userId);
 
     console.log(`[ChatRoutes] 'join-queue' request for userId: ${userId}`);
-    const user = await userService.getUser(userId);
     
     if (!queue.find(u => u.userId === userId)) {
       queue.push({ userId: user.id, username: user.username });
