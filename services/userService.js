@@ -99,7 +99,7 @@ class UserService {
     if (!firebaseUid) throw new Error('firebaseUid is required');
     const userId = uuidv5(firebaseUid, FIREBASE_UID_NAMESPACE);
 
-    // 1. Check if user exists
+    // 1. Check DB for existing user
     const { data: existing } = await supabase
       .from('users')
       .select('*')
@@ -108,8 +108,7 @@ class UserService {
 
     if (existing) return existing;
 
-    // 2. Create NEW user with STRICT LIMITS
-    // We force matches_remaining to 5 and is_guest to true
+    // 2. Create NEW user
     const username = preferredUsername || `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
     
     const { data, error } = await supabase
@@ -121,14 +120,17 @@ class UserService {
         gender: 'prefer-not-to-say',
         country: 'Other',
         interests: ['bored'],
-        matches_remaining: 5,       // <--- ENFORCE LIMIT
-        is_guest: true,             // <--- ENFORCE GUEST
+        matches_remaining: 5,       // Default limits
+        is_guest: true,             // Default guest status
         last_match_reset: new Date().toISOString()
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error("Supabase Insert Error:", error);
+        throw error;
+    }
     return data;
   }
 
