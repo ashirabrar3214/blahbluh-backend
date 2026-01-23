@@ -32,6 +32,23 @@ class SocketService {
       this.io = io;
       this.startStatsInterval();
     }
+
+    // 1. GATEKEEPER HELPER
+    const checkBalance = async (userId) => {
+      const { data: user } = await supabase
+        .from('users')
+        .select('matches_remaining, is_guest')
+        .eq('id', userId)
+        .single();
+      
+      // Allow if matches > 0 OR matches == -1 (Infinite)
+      const hasMatches = user && (user.matches_remaining > 0 || user.matches_remaining === -1);
+      return { 
+        allowed: hasMatches, 
+        code: user?.is_guest ? 'GUEST_LIMIT' : 'DAILY_LIMIT' 
+      };
+    };
+
     // console.log(`[SocketService] New connection handling started: ${socket.id}`);
     // 1. REGISTER USER (Handle Reconnections)
     socket.on('register-user', async ({ userId }) => {
@@ -115,20 +132,10 @@ class SocketService {
           return; // Stop here, do not add to queue
         }
 
-        // ✅ 2. NEW: CHECK MATCH LIMIT (Add this block)
-        const { data: user } = await supabase
-          .from('users')
-          .select('matches_remaining, is_guest')
-          .eq('id', userId)
-          .single();
-
-        // If user exists and has 0 matches (and isn't infinite -1)
-        if (user && user.matches_remaining === 0) {
-           // Emit error so frontend knows to show popup (if listening)
-           socket.emit('match-error', { 
-             code: user.is_guest ? 'GUEST_LIMIT' : 'DAILY_LIMIT',
-             error: 'Out of matches' 
-           });
+        // B) ✅ CHECK MATCH LIMIT (Universal Guard)
+        const check = await checkBalance(userId);
+        if (!check.allowed) {
+           socket.emit('match-error', { code: check.code, error: 'Out of matches' });
            return; // 🛑 STOP HERE. Do not let them join the queue.
         }
 
@@ -265,9 +272,17 @@ class SocketService {
 
       // Requeue skipper unless they explicitly exited (Home)
       if (reason !== 'exit') {
-        // console.log(`[SocketService] Requeueing skipper ${userId}`);
-        const myRes = await this.joinQueue(userId, socket.id, queue);
-        socket.emit('queue-joined', myRes);
+        // C) ✅ CHECK MATCH LIMIT ON SKIP
+        const check = await checkBalance(userId);
+        
+        if (!check.allowed) {
+           // 🛑 STOP. Do not requeue. Trigger popup on client.
+           socket.emit('match-error', { code: check.code, error: 'Out of matches' });
+        } else {
+           // ✅ Allow requeue
+           const myRes = await this.joinQueue(userId, socket.id, queue);
+           socket.emit('queue-joined', myRes);
+        }
       }
 
       this.activeChats.delete(chatId);
