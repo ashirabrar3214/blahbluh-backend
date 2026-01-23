@@ -278,6 +278,7 @@ router.put('/:userId', async (req, res) => {
       'total_rating_count',
       'is_reported',
       'pfp_background',
+      'profile_completed',
     ]);
 
     const updates = {};

@@ -28,6 +28,9 @@ router.post('/join-queue', banGuard, async (req, res) => {
       });
     }
 
+    // ✅ NEW: Decrement matches immediately to prevent race conditions
+    await userService.updateUser(userId, { matches_remaining: user.matches_remaining - 1 });
+
     // --- FIX END ---
 
     console.log(`[ChatRoutes] 'join-queue' request for userId: ${userId}`);

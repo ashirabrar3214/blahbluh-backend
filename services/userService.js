@@ -48,10 +48,11 @@ class UserService {
 
   // 3. Helper for Daily Reset
   async checkDailyReset(user) {
-    // Treat NULL as guest (safe default)
-    if (user.is_guest === true || user.is_guest === null) return user; 
+    // Rule: Guests (or null status) do NOT get daily reset. Only explicit is_guest === false gets it.
+    if (user.is_guest !== false) return user; 
     
-    const lastReset = new Date(user.last_match_reset);
+    // If last_match_reset is missing/null, treat as epoch (needs reset)
+    const lastReset = user.last_match_reset ? new Date(user.last_match_reset) : new Date(0);
     const now = new Date();
     
     if (lastReset.toDateString() !== now.toDateString()) {
@@ -71,16 +72,18 @@ class UserService {
 
   // 4. MODIFIED: Promote guest if they try to update profile
   async updateUser(userId, updates) {
-    // Check if this update completes the profile (e.g., setting gender/country)
-    // If so, upgrade them from guest to regular user
-    if (updates.gender && updates.country && updates.age) {
+    // Check if this update completes the profile via explicit signal
+    if (updates.profile_completed) {
         // If they were a guest, give them the full 50 matches now
         const { data: currentUser } = await supabase.from('users').select('is_guest').eq('id', userId).single();
         if (currentUser?.is_guest) {
             updates.is_guest = false;
             updates.matches_remaining = 50;
+            updates.last_match_reset = new Date().toISOString();
         }
     }
+    // Always remove the signal so it doesn't try to write to DB
+    delete updates.profile_completed;
 
     const { data, error } = await supabase
       .from('users')

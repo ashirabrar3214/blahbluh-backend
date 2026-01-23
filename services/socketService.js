@@ -868,8 +868,8 @@ class SocketService {
         socket2.emit('chat-paired', { chatId, users: [u1, u2] });
 
         // ✅ NEW: Deduct matches here (This counts the Pair)
-        this.deductMatch(id1);
-        this.deductMatch(id2);
+        // this.deductMatch(id1); // Moved to join-queue endpoint
+        // this.deductMatch(id2); // Moved to join-queue endpoint
 
         // console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
       }
