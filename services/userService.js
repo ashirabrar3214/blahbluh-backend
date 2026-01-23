@@ -48,7 +48,8 @@ class UserService {
 
   // 3. Helper for Daily Reset
   async checkDailyReset(user) {
-    if (user.is_guest) return user; // Guests don't get resets
+    // Treat NULL as guest (safe default)
+    if (user.is_guest === true || user.is_guest === null) return user; 
     
     const lastReset = new Date(user.last_match_reset);
     const now = new Date();
@@ -98,7 +99,7 @@ class UserService {
     if (!firebaseUid) throw new Error('firebaseUid is required');
     const userId = uuidv5(firebaseUid, FIREBASE_UID_NAMESPACE);
 
-    // Check DB
+    // 1. Check if user exists
     const { data: existing } = await supabase
       .from('users')
       .select('*')
@@ -107,8 +108,10 @@ class UserService {
 
     if (existing) return existing;
 
-    // Create directly in DB (Firebase users are not guests)
+    // 2. Create NEW user with STRICT LIMITS
+    // We force matches_remaining to 5 and is_guest to true
     const username = preferredUsername || `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
+    
     const { data, error } = await supabase
       .from('users')
       .insert({
@@ -117,9 +120,13 @@ class UserService {
         age: 18,
         gender: 'prefer-not-to-say',
         country: 'Other',
-        interests: ['bored']
+        interests: ['bored'],
+        matches_remaining: 5,       // <--- ENFORCE LIMIT
+        is_guest: true,             // <--- ENFORCE GUEST
+        last_match_reset: new Date().toISOString()
       })
-      .select().single();
+      .select()
+      .single();
 
     if (error) throw error;
     return data;
