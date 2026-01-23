@@ -107,6 +107,24 @@ async function fetchGeminiPrompts(userId) {
                         the whole point is to tell the user what to say to their partner. 
                         you are allowed to use slangs (in fact encouraged)
                         here are the interests of the user: ${topics}
+
+                        (If this is "empty", ignore specific hobbies and pivot to "Universal Human Chaos" mode).
+
+                        SPECIAL INSTRUCTIONS FOR EMPTY TAGS:
+                        - Focus on "Low-Stakes Debates": (e.g., cereal before milk, middle seats on planes).
+                        - Focus on "Relatable Toxicity": (e.g., ghosting, read receipts, delusional confidence).
+                        - Focus on "Deeply Weird Specifics": (e.g., "What is the specific song that would play if you were arrested?").
+
+                        REFINED PROMPT EXAMPLES (STRICTLY NO "W-WORDS"):
+                        1. "My toxic trait is thinking I could ______."
+                        2. "Valid or Red Flag: People who still use the default iPhone alarm sound."
+                        3. "Prove me wrong: The best part of a relationship is the first 3 days of talking."
+                        4. "I'm the type of person who ______."
+                        5. "Options for our first fake date:
+                          - Competitive grocery shopping.
+                          - People-watching at the airport.
+                          - Stealing a traffic cone."
+
                         Now generate the 5 prompts.
 
                         Return JSON only.
