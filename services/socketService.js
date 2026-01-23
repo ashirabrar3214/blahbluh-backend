@@ -747,6 +747,26 @@ class SocketService {
     };
   }
 
+  async deductMatch(userId) {
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('matches_remaining')
+        .eq('id', userId)
+        .single();
+
+      // Decrement if they have matches (and not infinite -1)
+      if (user && user.matches_remaining > 0) {
+        await supabase
+          .from('users')
+          .update({ matches_remaining: user.matches_remaining - 1 })
+          .eq('id', userId);
+      }
+    } catch (err) {
+      console.error(`[SocketService] Failed to deduct match for ${userId}:`, err);
+    }
+  }
+
   async tryMatchUsers(queue) {
     if (this.isMatching) return;
     this.isMatching = true;
@@ -846,6 +866,10 @@ class SocketService {
         // now emit paired
         socket1.emit('chat-paired', { chatId, users: [u1, u2] });
         socket2.emit('chat-paired', { chatId, users: [u1, u2] });
+
+        // ✅ NEW: Deduct matches here (This counts the Pair)
+        this.deductMatch(id1);
+        this.deductMatch(id2);
 
         // console.log(`[match] chatId=${chatId} ${id1}(${u1.username}) <-> ${id2}(${u2.username})`);
       }

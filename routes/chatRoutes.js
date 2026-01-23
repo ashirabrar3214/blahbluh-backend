@@ -28,11 +28,6 @@ router.post('/join-queue', banGuard, async (req, res) => {
       });
     }
 
-    // 3. DECREMENT MATCHES
-    await supabase
-      .from('users')
-      .update({ matches_remaining: user.matches_remaining - 1 })
-      .eq('id', userId);
     // --- FIX END ---
 
     console.log(`[ChatRoutes] 'join-queue' request for userId: ${userId}`);
