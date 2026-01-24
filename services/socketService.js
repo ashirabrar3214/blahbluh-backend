@@ -233,6 +233,13 @@ class SocketService {
       const partnerId = getId(partner);
       // console.log(`[SocketService] Identified partner: ${partnerId}`);
 
+      // ✅ REFUND THE PARTNER
+      // "userId" is the Skipper (Clicked Next). They pay.
+      // "partnerId" is the Victim (Got Skipped). They get a refund.
+      if (partnerId) {
+         this.refundMatch(partnerId);
+      }
+
       const shouldRequeuePartner = reason !== 'exit';
 
       // Tell whoever is still in the room (partner) that chat ended.
@@ -793,6 +800,27 @@ class SocketService {
       }
     } catch (err) {
       console.error(`[SocketService] Failed to deduct match for ${userId}:`, err);
+    }
+  }
+
+  async refundMatch(userId) {
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('matches_remaining')
+        .eq('id', userId)
+        .single();
+
+      // Only refund if they are not on infinite (-1) matches
+      if (user && user.matches_remaining !== -1) {
+        await supabase
+          .from('users')
+          .update({ matches_remaining: user.matches_remaining + 1 })
+          .eq('id', userId);
+        // console.log(`[SocketService] Refunded match to user ${userId}`);
+      }
+    } catch (err) {
+      console.error(`[SocketService] Failed to refund match for ${userId}:`, err);
     }
   }
 
