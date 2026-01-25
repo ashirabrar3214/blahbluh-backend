@@ -5,6 +5,8 @@ const supabase = require('../config/supabase');
 const adminService = require('./adminService');
 const moderationService = require('./moderationService');
 const { validateClipUrl } = require('./linkValidator');
+// ✅ Import Gemini Service
+const geminiService = require('../routes/geminiService');
 
 class SocketService {
   constructor() {
@@ -920,9 +922,21 @@ class SocketService {
         socket2.join(chatId);
         // console.log(`[SocketService] Forced room join: ${chatId} -> ${id1}, ${id2}`);
 
-        // now emit paired
-        socket1.emit('chat-paired', { chatId, users: [u1, u2] });
-        socket2.emit('chat-paired', { chatId, users: [u1, u2] });
+        // ✅ NEW: Fetch Gemini Prompt BEFORE emitting match
+        // This ensures the frontend doesn't show a second loading screen.
+        let topic = null;
+        try {
+          // Generate topic based on User 1's interests (or random)
+          topic = await geminiService.generateConversationStarter(id1);
+        } catch (e) {
+          console.error("[SocketService] Gemini Error:", e.message);
+          // Fallback if Gemini fails
+          topic = { kind: "text", text: "What's on your mind?", options: [] };
+        }
+
+        // ✅ Emit Paired event WITH the topic
+        socket1.emit('chat-paired', { chatId, users: [u1, u2], topic });
+        socket2.emit('chat-paired', { chatId, users: [u1, u2], topic });
 
         // ✅ DEDUCT MATCHES NOW
         // This runs every time a pair is formed. 
