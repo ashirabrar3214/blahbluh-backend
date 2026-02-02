@@ -572,94 +572,33 @@ class SocketService {
       socket.emit('admin-search-results', results);
     });
 
-    // 2. DISCONNECT (Modified to check flag)
-    socket.on('disconnect', async () => {
-      const leavingId = socket.userId;
-      if (!leavingId) return;
-
-      // 1. Always cleanup maps immediately
-      this.userSessions.delete(leavingId);
-      this.userSocketMap.delete(leavingId);
-      this.userSockets.delete(leavingId);
-      this.blockedCache.delete(leavingId);
-      
-      // 2. Always remove from queue immediately
-      const qIndex = queue.findIndex(u => u.userId === leavingId);
-      if (qIndex !== -1) queue.splice(qIndex, 1);
-
-      // 3. Handle Active Chats
+    socket.on('disconnect', () => {
+      const userId = socket.userId;
+      if (!userId) return;
+    
+      // Remove from queue immediately on disconnect
+      const qIndex = this.queueReference.findIndex(u => u.userId === userId);
+      if (qIndex !== -1) {
+        this.queueReference.splice(qIndex, 1);
+      }
+    
       const getId = (u) => u?.userId ?? u?.id;
+      let wasInChat = false;
       for (const [chatId, chatData] of this.activeChats.entries()) {
-        if (chatData.users.some(u => getId(u) === leavingId)) {
-          
-          // 🛑 CHECK FLAG: If intentional refresh, SKIP TIMER
-          if (socket.isRefreshing) {
-             console.log(`[SocketService] Instant cleanup for ${leavingId} (Refresh)`);
-             
-             // Notify partner immediately
-             io.to(chatId).emit('partner-disconnected', {
-                chatId,
-                reason: 'disconnect',
-                shouldRequeue: true,
-                byUserId: leavingId
-             });
-
-             // Requeue partner immediately (optional, or let them handle it)
-             const partner = chatData.users.find(u => getId(u) !== leavingId);
-             const partnerId = getId(partner);
-             if (partnerId) {
-                const s = this.userSockets.get(partnerId);
-                if (s && s.connected) {
-                  s.leave(chatId);
-                  // Auto-requeue partner logic here if desired
-                  // ...
-                }
-             }
-             
-             // Destroy chat
-             this.activeChats.delete(chatId);
-             return; // ✅ EXIT HERE (Do not start 10s timer)
-          }
-
-          // ... (Your Existing 10s Timer Logic for Glitches) ...
-          console.log(`[SocketService] User ${leavingId} disconnected (Glitch?). Starting 10s timer.`);
-          io.to(chatId).emit('partner-status', { status: 'reconnecting' });
-          
-          const timer = setTimeout(async () => {
-            // console.log(`[SocketService] Timer expired for ${leavingId}. Killing chat.`);
-            this.disconnectTimers.delete(leavingId);
-            
-            if (!this.activeChats.has(chatId)) return;
-
-            // Notify partner of FINAL disconnect
-            io.to(chatId).emit('partner-disconnected', {
-              chatId,
-              reason: 'disconnect',
-              shouldRequeue: true,
-              byUserId: leavingId
-            });
-            
-            // Requeue partner logic...
-            const partner = chatData.users.find(u => getId(u) !== leavingId);
-            const partnerId = getId(partner);
-            if (partnerId) {
-               const s = this.userSockets.get(partnerId);
-               if (s) {
-                 s.leave(chatId);
-                 try {
-                   const res = await this.joinQueue(partnerId, s.id, queue);
-                   s.emit('queue-joined', res);
-                 } catch(e) {}
-               }
-            }
-
-            this.activeChats.delete(chatId);
-
-          }, 10000); // 10 seconds
-          
-          this.disconnectTimers.set(leavingId, timer);
+        if (chatData.users.some(u => getId(u) === userId)) {
+          wasInChat = true;
+          // Only start the grace-period timer if they were in an ACTIVE chat
+          this.startDisconnectTimer(userId, chatId, chatData, queue, io);
           break;
         }
+      }
+    
+      if (!wasInChat) {
+        // If not in chat, cleanup immediately.
+        this.userSessions.delete(userId);
+        this.userSocketMap.delete(userId);
+        this.userSockets.delete(userId);
+        this.blockedCache.delete(userId);
       }
     });
 
@@ -672,6 +611,53 @@ class SocketService {
     });
 
 
+  }
+
+  startDisconnectTimer(userId, chatId, chatData, queue, io) {
+    console.log(`[SocketService] User ${userId} disconnected from chat ${chatId}. Starting 10s grace period.`);
+    io.to(chatId).emit('partner-status', { status: 'reconnecting' });
+  
+    const timer = setTimeout(async () => {
+      this.disconnectTimers.delete(userId);
+  
+      if (!this.activeChats.has(chatId)) return;
+  
+      console.log(`[SocketService] Grace period ended for ${userId}. Killing chat ${chatId}.`);
+  
+      io.to(chatId).emit('partner-disconnected', {
+        chatId,
+        reason: 'disconnect',
+        shouldRequeue: true,
+        byUserId: userId
+      });
+  
+      const getId = (u) => u?.userId ?? u?.id;
+      const partner = chatData.users.find(u => getId(u) !== userId);
+      const partnerId = getId(partner);
+      if (partnerId) {
+        const s = this.userSockets.get(partnerId);
+        if (s) {
+          s.leave(chatId);
+          try {
+            const res = await this.joinQueue(partnerId, s.id, queue);
+            s.emit('queue-joined', res);
+          } catch (e) {
+            console.error(`Error requeueing partner ${partnerId}`, e);
+          }
+        }
+      }
+  
+      this.activeChats.delete(chatId);
+  
+      // Cleanup the disconnected user's data
+      this.userSessions.delete(userId);
+      this.userSocketMap.delete(userId);
+      this.userSockets.delete(userId);
+      this.blockedCache.delete(userId);
+  
+    }, 10000); // 10 seconds
+  
+    this.disconnectTimers.set(userId, timer);
   }
 
   async _purgeUserFromQueueAndChat(userId, queue, io) {
