@@ -112,10 +112,9 @@ class SocketService {
     });
 
     // ✅ NEW: Handle Explicit Page Refresh/Close
-    socket.on('page-unload', () => {
-      // Mark this socket as "Killing itself intentionally"
+    socket.on('page-unload', ({ userId }) => {
       socket.isRefreshing = true;
-      console.log(`[SocketService] User ${socket.userId} is refreshing/leaving. Skipping grace period.`);
+      socket.refreshingUserId = userId;
     });
 
     socket.on('join-queue', async (data) => {
@@ -572,8 +571,22 @@ class SocketService {
       socket.emit('admin-search-results', results);
     });
 
-    socket.on('disconnect', () => {
-      const userId = socket.userId;
+    socket.on('disconnect', async () => {
+      const userId = socket.userId || socket.refreshingUserId;
+
+      if (socket.isRefreshing && userId) {
+        // Treat refresh like a hard exit:
+        // - remove from queue
+        // - if in chat, end chat and requeue partner properly
+        await this._purgeUserFromQueueAndChat(userId, queue, io);
+
+        this.userSessions.delete(userId);
+        this.userSocketMap.delete(userId);
+        this.userSockets.delete(userId);
+        this.blockedCache.delete(userId);
+        return; // IMPORTANT: don't start grace timer
+      }
+
       if (!userId) return;
     
       // Remove from queue immediately on disconnect
