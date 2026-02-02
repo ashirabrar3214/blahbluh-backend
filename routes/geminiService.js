@@ -118,12 +118,13 @@ async function fetchGeminiPrompts(userId) {
                         REFINED PROMPT EXAMPLES (STRICTLY NO "W-WORDS"):
                         1. "My toxic trait is thinking I could ______."
                         2. "Valid or Red Flag: People who still use the default iPhone alarm sound."
-                        3. "Prove me wrong: The best part of a relationship is the first 3 days of talking."
-                        4. "I'm the type of person who ______."
-                        5. "Options for our first fake date:
-                          - Competitive grocery shopping.
-                          - People-watching at the airport.
-                          - Stealing a traffic cone."
+                        3. “My toxic trait is romanticizing people who treat me like shit.”
+
+                        4. “Green light or red flag: still mad about shit from 2019.”
+
+                        5. “Prove me wrong: if they wanted to, they fucking would.”
+
+                        6. “I’m the type of person who self-sabotages then blames the universe.”
 
                         Now generate the 5 prompts.
 
