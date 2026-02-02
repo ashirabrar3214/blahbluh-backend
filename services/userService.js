@@ -121,7 +121,7 @@ class UserService {
         age: 18,
         gender: 'prefer-not-to-say',
         country: 'Other',
-        interests: ['bored'],
+        interests: [''],
         matches_remaining: 5,       // Default limits
         is_guest: true,             // Default guest status
         last_match_reset: new Date().toISOString()
