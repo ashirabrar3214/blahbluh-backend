@@ -108,7 +108,7 @@ async function fetchGeminiPrompts(userId) {
                         you are allowed to use slangs (in fact encouraged)
                         here are the interests of the user: ${topics}
 
-                        (If this is "empty", ignore specific hobbies and pivot to "Universal Human Chaos" mode).
+                        (If this is "anything", ignore specific hobbies and pivot to "Universal Human Chaos" mode).
 
                         SPECIAL INSTRUCTIONS FOR EMPTY TAGS:
                         - Focus on "Low-Stakes Debates": (e.g., cereal before milk, middle seats on planes).
