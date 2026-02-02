@@ -132,6 +132,8 @@ async function fetchGeminiPrompts(userId) {
                         Each prompt must be an object with: kind, text, and optionally options.
                         If kind is mcq, include 3–4 short options.
                         Do not label options as A) B) C) — just raw strings.
+                        Prioritize mcq type prompts. 
+                        out of 10, 7 should be mcq, 2 will be fill in a blank one liner and 1 is descriptive and deep. 
 `,
               },
             ],
