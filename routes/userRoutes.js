@@ -130,12 +130,12 @@ router.get('/user-rating/:userId', async (req, res) => {
 
 router.get('/generate-user-id', async (req, res) => {
   try {
-    const { firebaseUid, username } = req.query;
+    // [CHANGE 1] Extract 'email' from query
+    const { firebaseUid, username, email } = req.query;
 
-    // If firebaseUid is provided -> deterministic UUID based on Firebase UID
-    // Otherwise fallback to random UUID guest behavior
+    // [CHANGE 2] Pass 'email' to the service function
     const user = firebaseUid
-      ? await userService.getOrCreateUserFromFirebase(firebaseUid, username)
+      ? await userService.getOrCreateUserFromFirebase(firebaseUid, username, email)
       : await userService.createUser();
 
     console.log(`[USER] User ready: ${user.id} (${user.username})`);

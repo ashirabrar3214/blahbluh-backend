@@ -97,7 +97,8 @@ class UserService {
 
   // --- Keep Existing Logic for Firebase/Friends ---
 
-  async getOrCreateUserFromFirebase(firebaseUid, preferredUsername) {
+  // [CHANGE 3] Accept 'email' as the 3rd argument
+  async getOrCreateUserFromFirebase(firebaseUid, preferredUsername, email) {
     if (!firebaseUid) throw new Error('firebaseUid is required');
     const userId = uuidv5(firebaseUid, FIREBASE_UID_NAMESPACE);
 
@@ -108,22 +109,36 @@ class UserService {
       .eq('id', userId)
       .maybeSingle();
 
-    if (existing) return existing;
+    if (existing) {
+      // [CHANGE 4] SELF-HEALING: If user exists but has no email, save it now!
+      if (!existing.email && email) {
+        console.log(`[UserService] Backfilling missing email for ${userId}`);
+        await supabase
+          .from('users')
+          .update({ email: email })
+          .eq('id', userId);
+          
+        existing.email = email; // Update local object so it returns correctly
+      }
+      return existing;
+    }
 
     // 2. Create NEW user
     const username = preferredUsername || `${adjectives[Math.floor(Math.random() * adjectives.length)]} ${nouns[Math.floor(Math.random() * nouns.length)]}`;
     
+    // [CHANGE 5] Insert 'email' into the new row
     const { data, error } = await supabase
       .from('users')
       .insert({
         id: userId,
         username,
+        email: email || null, // <--- Save email here
         age: 18,
         gender: 'prefer-not-to-say',
         country: 'Other',
         interests: ['anything'],
-        matches_remaining: 5,       // Default limits
-        is_guest: true,             // Default guest status
+        matches_remaining: 5,
+        is_guest: true,
         last_match_reset: new Date().toISOString()
       })
       .select()
