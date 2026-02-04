@@ -7,6 +7,7 @@ const moderationService = require('./moderationService');
 const { validateClipUrl } = require('./linkValidator');
 // ✅ Import Gemini Service
 const geminiService = require('../routes/geminiService');
+const { sendFriendMessageNotification } = require('./emailService');
 
 class SocketService {
   constructor() {
@@ -362,6 +363,35 @@ class SocketService {
           
           io.to(chatId).emit('new-message', messageData);
           // io.to(chatId).emit('friend-message-received', messageData);
+
+          // ---------------------------------------------------------
+          // ✅ NEW: SEND EMAIL NOTIFICATION (Test Implementation)
+          // ---------------------------------------------------------
+          
+          // 1. Get Recipient Details
+          const { data: receiver } = await supabase
+            .from('users')
+            .select('email, username')
+            .eq('id', receiverId)
+            .single();
+
+          // 2. Get Sender Details (for the email subject/body)
+          const { data: sender } = await supabase
+            .from('users')
+            .select('username')
+            .eq('id', userId)
+            .single();
+
+          // 3. Send the email if recipient has one
+          if (receiver && receiver.email) {
+            console.log(`[SocketService] Triggering email to ${receiver.username} (${receiver.email})...`);
+            
+            // Note: For this test, we are sending it EVERY time. 
+            // Later we can add the "once per 24h" check back.
+            sendFriendMessageNotification(receiver.email, sender?.username || "A Friend", message);
+          } else {
+            console.log(`[SocketService] Cannot send email: Receiver ${receiverId} has no email set.`);
+          }
         } else {
           // ... your existing random chat logic ...
           // console.log(`[SocketService] Random message processing: ${chatId}`);
