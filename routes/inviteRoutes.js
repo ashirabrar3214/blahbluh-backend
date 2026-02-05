@@ -32,12 +32,28 @@ router.get('/:id', async (req, res) => {
 // Accept Invite
 router.post('/accept', async (req, res) => {
   try {
-    const { inviteId, userId } = req.body;
-    const result = await inviteService.acceptInvite(inviteId, userId);
+    // We now expect 'answerText' from the frontend
+    const { inviteId, userId, answerText } = req.body;
+    
+    if (!answerText) {
+        return res.status(400).json({ error: "Answer text is required" });
+    }
+
+    const result = await inviteService.acceptInvite(inviteId, userId, answerText);
     res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Add the "My Yaps" route
+router.get('/mine/:userId', async (req, res) => {
+    try {
+        const invites = await inviteService.getMyInvites(req.params.userId);
+        res.json(invites);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 module.exports = router;

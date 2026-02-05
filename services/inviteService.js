@@ -37,16 +37,14 @@ class InviteService {
     return data;
   }
 
-  async acceptInvite(inviteId, recipientId) {
+  async acceptInvite(inviteId, recipientId, answerText) {
     const invite = await this.getInvite(inviteId);
     
     if (invite.sender_id === recipientId) {
       throw new Error("You cannot accept your own invite");
     }
 
-    // Create friendship immediately
-    // We reuse the logic from friendService but force the "accepted" status
-    // 1. Check if friendship already exists
+    // 1. Create Friendship (if not exists)
     const { data: existing } = await supabase
         .from('friends')
         .select('*')
@@ -54,17 +52,44 @@ class InviteService {
         .maybeSingle();
         
     if (!existing) {
-        // Create 2-way friendship
         await supabase.from('friends').insert([
-            { user_id: invite.sender_id, friend_id: recipientId },
-            { user_id: recipientId, friend_id: invite.sender_id }
+            { user_id: invite.sender_id, friend_id: recipientId, status: 'yapping' },
+            { user_id: recipientId, friend_id: invite.sender_id, status: 'yapping' }
         ]);
     }
 
+    // 2. Post the Answer as the first Message!
+    const sortedIds = [invite.sender_id, recipientId].sort();
+    const roomId = `friend_${sortedIds[0]}_${sortedIds[1]}`;
+
+    if (answerText) {
+      await supabase.from('friend_messages').insert({
+          chat_id: roomId,
+          sender_id: recipientId,
+          receiver_id: invite.sender_id,
+          message: answerText
+      });
+    }
+
+    // 3. Mark Invite as "Answered"
+    await supabase
+        .from('friend_invites')
+        .update({ is_active: false })
+        .eq('id', inviteId);
+
     return { 
         senderId: invite.sender_id, 
-        prompt: invite.prompt_text 
+        roomId: roomId 
     };
+  }
+
+  async getMyInvites(userId) {
+      const { data } = await supabase
+        .from('friend_invites')
+        .select('*')
+        .eq('sender_id', userId)
+        .order('created_at', { ascending: false });
+      return data;
   }
 }
 
