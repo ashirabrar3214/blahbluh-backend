@@ -10,16 +10,13 @@ router.post('/create', async (req, res) => {
     // 1. Create the invite record
     const { data, error } = await supabase
       .from('friend_invites')
-      .insert({ 
-        sender_id: senderId, 
-        prompt_text: promptText 
-      })
+      .insert({ sender_id: senderId, prompt_text: promptText })
       .select('id')
       .single();
 
     if (error) throw error;
 
-    // 2. Return the full URL
+    // FIX: Use the environment variable, fallback to localhost only for dev
     const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
     res.json({ success: true, shareUrl: `${baseUrl}/invite/${data.id}` });
   } catch (error) {
@@ -28,4 +25,4 @@ router.post('/create', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = router; 
