@@ -7,6 +7,7 @@ const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
 const { router: chatRoutes, queue } = require('./routes/chatRoutes');
 const friendRoutes = require('./routes/friendRoutes');
+const inviteRoutes = require('./routes/inviteRoutes');
 const moderationRoutes = require('./routes/moderationRoutes');
 const gifRoutes = require('./routes/gifRoutes');
 const socketService = require('./services/socketService');
@@ -30,6 +31,7 @@ app.use(express.json());
 app.use('/api', userRoutes);
 app.use('/api', chatRoutes);
 app.use('/api', friendRoutes);
+app.use('/api/invites', inviteRoutes);
 // This adds the "/moderation" prefix to all routes in that file
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/gifs', gifRoutes);
