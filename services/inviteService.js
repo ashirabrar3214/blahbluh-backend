@@ -72,10 +72,19 @@ class InviteService {
     }
 
     // 3. Mark Invite as "Answered"
-    await supabase
+    // WE CHANGED THIS: Now we capture the error to see if it fails
+    const { error: updateError } = await supabase
         .from('friend_invites')
-        .update({ is_active: false })
+        .update({ is_active: false }) 
         .eq('id', inviteId);
+
+    if (updateError) {
+        console.error("❌ CRITICAL: Failed to update invite status!", updateError);
+        // We don't throw an error here because the chat was created successfully,
+        // but we need to know if this fails in the logs.
+    } else {
+        console.log("✅ Invite marked as answered.");
+    }
 
     return { 
         senderId: invite.sender_id, 
