@@ -18,6 +18,8 @@ class InviteService {
   }
 
   async getInvite(inviteId) {
+    console.log(`🔍 Looking for invite: ${inviteId}`); // DEBUG LOG
+
     const { data, error } = await supabase
       .from('friend_invites')
       .select(`
@@ -27,10 +29,18 @@ class InviteService {
       .eq('id', inviteId)
       .single();
 
+    // DEBUG LOGS
+    if (error) console.error("❌ Supabase Error:", error); 
+    if (!data) console.error("❌ No data found (Check RLS policies!)");
+
     if (error || !data) throw new Error('Invite not found');
     
     // Check expiry
-    if (new Date() > new Date(data.expires_at)) {
+    const now = new Date();
+    const expiry = new Date(data.expires_at);
+    console.log(`🕒 Time Check: Now=${now.toISOString()} vs Expire=${expiry.toISOString()}`);
+
+    if (now > expiry) {
       throw new Error('Invite expired');
     }
 
