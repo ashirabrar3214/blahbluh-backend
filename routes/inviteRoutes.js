@@ -32,28 +32,28 @@ router.get('/:id', async (req, res) => {
 // Accept Invite
 router.post('/accept', async (req, res) => {
   try {
-    // We now expect 'answerText' from the frontend
     const { inviteId, userId, answerText } = req.body;
-    
-    if (!answerText) {
-        return res.status(400).json({ error: "Answer text is required" });
-    }
-
+    if (!answerText) return res.status(400).json({ error: "Answer required" });
     const result = await inviteService.acceptInvite(inviteId, userId, answerText);
-    res.json({ success: true, ...result });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Add the "My Yaps" route
+// NEW: Get "My Yaps" List
 router.get('/mine/:userId', async (req, res) => {
     try {
-        const invites = await inviteService.getMyInvites(req.params.userId);
-        res.json(invites);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        const list = await inviteService.getMyInvites(req.params.userId);
+        res.json(list);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// NEW: Get Single Session (Prompt + Chat)
+router.get('/session/:inviteId', async (req, res) => {
+    try {
+        const userId = req.query.userId;
+        const data = await inviteService.getYapSession(req.params.inviteId, userId);
+        res.json(data);
+    } catch (e) { res.status(403).json({ error: e.message }); }
 });
 
 module.exports = router;

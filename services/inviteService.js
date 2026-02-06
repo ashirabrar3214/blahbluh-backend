@@ -1,14 +1,17 @@
 // services/inviteService.js
+// services/inviteService.js
 const supabase = require('../config/supabase');
-const friendService = require('./friendService');
 
 class InviteService {
+
+  // 1. Create the Card (Unchanged)
   async createInvite(senderId, promptText) {
     const { data, error } = await supabase
       .from('friend_invites')
       .insert({
         sender_id: senderId,
-        prompt_text: promptText
+        prompt_text: promptText,
+        is_active: true
       })
       .select()
       .single();
@@ -17,88 +20,110 @@ class InviteService {
     return data;
   }
 
+  // 2. Get Card Details (Added Expiry Check)
   async getInvite(inviteId) {
     const { data, error } = await supabase
       .from('friend_invites')
-      .select(`
-        *,
-        sender:users!friend_invites_sender_id_fkey(username, pfp, pfp_background)
-      `)
+      .select(`*, sender:users!friend_invites_sender_id_fkey(username, pfp)`)
       .eq('id', inviteId)
       .single();
 
-    if (error || !data) throw new Error('Invite not found');
-    
-    // Check expiry
-    if (new Date() > new Date(data.expires_at)) {
-      throw new Error('Invite expired');
-    }
-
+    if (error || !data) throw new Error('Card not found');
     return data;
   }
 
-  async acceptInvite(inviteId, recipientId, answerText) {
+  // 3. Accept & Start Yap Session (THE BIG CHANGE)
+  async acceptInvite(inviteId, respondentId, answerText) {
     const invite = await this.getInvite(inviteId);
     
-    if (invite.sender_id === recipientId) {
-      throw new Error("You cannot accept your own invite");
-    }
+    if (invite.sender_id === respondentId) throw new Error("You can't answer your own card");
+    if (!invite.is_active) throw new Error("This card was already answered!");
 
-    // 1. Create Friendship (if not exists)
-    const { data: existing } = await supabase
-        .from('friends')
-        .select('*')
-        .or(`and(user_id.eq.${invite.sender_id},friend_id.eq.${recipientId}),and(user_id.eq.${recipientId},friend_id.eq.${invite.sender_id})`)
-        .maybeSingle();
-        
-    if (!existing) {
-        await supabase.from('friends').insert([
-            { user_id: invite.sender_id, friend_id: recipientId, status: 'yapping' },
-            { user_id: recipientId, friend_id: invite.sender_id, status: 'yapping' }
-        ]);
-    }
+    // A. Calculate Expiry (24 hours from NOW)
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (24 * 60 * 60 * 1000)); // +24 hours
 
-    // 2. Post the Answer as the first Message!
-    const sortedIds = [invite.sender_id, recipientId].sort();
-    const roomId = `friend_${sortedIds[0]}_${sortedIds[1]}`;
+    // B. Create the "Room ID"
+    // We don't use friend IDs anymore. We use the Invite ID itself.
+    const yapRoomId = `yap_${inviteId}`;
 
-    if (answerText) {
-      await supabase.from('friend_messages').insert({
-          chat_id: roomId,
-          sender_id: recipientId,
-          receiver_id: invite.sender_id,
-          message: answerText
-      });
-    }
-
-    // 3. Mark Invite as "Answered"
-    // WE CHANGED THIS: Now we capture the error to see if it fails
+    // C. Update Invite: Lock it & Set Timers
     const { error: updateError } = await supabase
         .from('friend_invites')
-        .update({ is_active: false }) 
+        .update({ 
+            is_active: false, // Link is now dead
+            respondent_id: respondentId,
+            chat_started_at: now.toISOString(),
+            chat_expires_at: expiresAt.toISOString()
+        }) 
         .eq('id', inviteId);
 
-    if (updateError) {
-        console.error("❌ CRITICAL: Failed to update invite status!", updateError);
-        // We don't throw an error here because the chat was created successfully,
-        // but we need to know if this fails in the logs.
-    } else {
-        console.log("✅ Invite marked as answered.");
-    }
+    if (updateError) throw updateError;
+
+    // D. Insert the ANSWER as the first message
+    const { error: msgError } = await supabase.from('messages').insert({
+        room_id: yapRoomId,
+        sender_id: respondentId,
+        text: answerText,
+        created_at: now.toISOString()
+    });
+
+    if (msgError) console.error("Message Error:", msgError);
 
     return { 
-        senderId: invite.sender_id, 
-        roomId: roomId 
+        success: true, 
+        roomId: yapRoomId, // Frontend sends user to /chat/yap_UUID
+        expiresAt 
     };
   }
 
+  // 4. Get My Sent Cards (For "My Yaps" Dashboard)
   async getMyInvites(userId) {
-      const { data } = await supabase
+      // Fetch cards I sent that were answered (session active) OR are still pending
+      const now = new Date().toISOString();
+      
+      const { data, error } = await supabase
         .from('friend_invites')
-        .select('*')
+        .select(`
+            *,
+            respondent:users!friend_invites_respondent_id_fkey(username, pfp)
+        `)
         .eq('sender_id', userId)
         .order('created_at', { ascending: false });
-      return data;
+
+      if (error) throw error;
+
+      // Filter: Show Pending items AND Active chats (not expired)
+      return data.filter(item => {
+          if (item.is_active) return true; // Show pending
+          return new Date(item.chat_expires_at) > new Date(); // Show active chats
+      });
+  }
+
+  // 5. Get Session Data (For the Chat Window)
+  async getYapSession(inviteId, userId) {
+      // Fetch the Invite (Prompt) + Messages
+      const { data: invite } = await supabase
+          .from('friend_invites')
+          .select('*, sender:users!friend_invites_sender_id_fkey(username, pfp)')
+          .eq('id', inviteId)
+          .single();
+
+      if (!invite) throw new Error("Session not found");
+
+      // Verify User is Participant
+      if (invite.sender_id !== userId && invite.respondent_id !== userId) {
+          throw new Error("Unauthorized");
+      }
+
+      // Fetch Messages for this specific room
+      const { data: messages } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('room_id', `yap_${inviteId}`)
+          .order('created_at', { ascending: true });
+
+      return { invite, messages };
   }
 }
 
