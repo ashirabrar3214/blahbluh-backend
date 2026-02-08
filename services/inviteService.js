@@ -51,7 +51,7 @@ class InviteService {
     const { error: updateError } = await supabase
         .from('friend_invites')
         .update({ 
-            is_active: true,
+            is_active: false, // ✅ card is no longer pending once answered
             respondent_id: respondentId,
             chat_started_at: now.toISOString(),
             chat_expires_at: expiresAt.toISOString()
@@ -86,7 +86,7 @@ class InviteService {
         .from('friend_invites')
         .select(`
             *,
-            respondent:users!friend_invites_respondent_id_fkey(username, pfp)
+            respondent:users!friend_invites_respondent_id_fkey(username, pfp, pfp_background)
         `)
         .eq('sender_id', userId)
         .order('created_at', { ascending: false });
@@ -95,10 +95,14 @@ class InviteService {
 
       // Filter: Show Pending items AND Active chats (not expired)
       return data.filter(item => {
-          if (item.chat_expires_at) {
-              return new Date(item.chat_expires_at) > new Date();
-          }
-          return item.is_active;
+        // answered chat still alive
+        if (item.chat_expires_at) {
+          return new Date(item.chat_expires_at) > new Date();
+        }
+
+        // pending invite is only valid if still active AND not expired AND not answered
+        const notExpired = new Date(item.expires_at) > new Date();
+        return item.is_active && !item.respondent_id && notExpired;
       });
   }
 
@@ -107,7 +111,11 @@ class InviteService {
       // Fetch the Invite (Prompt) + Messages
       const { data: invite } = await supabase
           .from('friend_invites')
-          .select('*, sender:users!friend_invites_sender_id_fkey(username, pfp)')
+          .select(`
+            *,
+            sender:users!friend_invites_sender_id_fkey(username, pfp, pfp_background),
+            respondent:users!friend_invites_respondent_id_fkey(username, pfp, pfp_background)
+          `)
           .eq('id', inviteId)
           .single();
 
