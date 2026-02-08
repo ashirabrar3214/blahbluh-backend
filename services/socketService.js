@@ -299,6 +299,33 @@ class SocketService {
       socket.join(chatId);
     });
 
+    socket.on('join_room', async ({ roomId, userId }) => {
+      // 1. Verify user is either sender or respondent of this invite
+      // Handle prefix mismatch: friend_invites uses UUID, messages uses yap_UUID
+      const inviteId = roomId.startsWith('yap_') ? roomId.replace('yap_', '') : roomId;
+      const dbRoomId = roomId.startsWith('yap_') ? roomId : `yap_${roomId}`;
+
+      const { data: invite } = await supabase
+        .from('friend_invites')
+        .select('*')
+        .eq('id', inviteId)
+        .single();
+
+      if (invite && (invite.sender_id === userId || invite.respondent_id === userId)) {
+        socket.join(dbRoomId);
+        console.log(`User ${userId} re-joined room ${dbRoomId}`);
+        
+        // 2. Fetch last few messages to populate the chat
+        const { data: history } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('room_id', dbRoomId)
+          .order('created_at', { ascending: true });
+
+        socket.emit('chat_history', history);
+      }
+    });
+
     socket.on('send-message', async (data) => {
       // console.log(`[SocketService] 'send-message' received for chat: ${data.chatId}`);
       
