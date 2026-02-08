@@ -326,6 +326,33 @@ class SocketService {
       }
     });
 
+    socket.on('join_firechat', async ({ roomId, userId }) => {
+      const { data: invite } = await supabase
+        .from('friend_invites')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+
+      // Note: invite.is_active is false when chat starts. We check expiry instead.
+      if (invite && new Date(invite.chat_expires_at) > new Date()) {
+        const dbRoomId = `yap_${roomId}`;
+        socket.join(dbRoomId);
+        
+        // Notify the SENDER that their card was answered (the "notification")
+        const partnerId = invite.sender_id === userId ? invite.respondent_id : invite.sender_id;
+        const partnerSocketId = this.userSessions.get(partnerId);
+        
+        if (partnerSocketId) {
+          this.io.to(partnerSocketId).emit('firechat_notification', {
+            message: "Your yapping card was answered!",
+            roomId: roomId
+          });
+        }
+      } else {
+        socket.emit('firechat_error', "This chat has expired or is invalid.");
+      }
+    });
+
     socket.on('send-message', async (data) => {
       // console.log(`[SocketService] 'send-message' received for chat: ${data.chatId}`);
       

@@ -37,7 +37,7 @@ class InviteService {
     const invite = await this.getInvite(inviteId);
     
     if (invite.sender_id === respondentId) throw new Error("You can't answer your own card");
-    if (!invite.is_active) throw new Error("This card was already answered!");
+    if (invite.respondent_id) throw new Error("This card was already answered!");
 
     // A. Calculate Expiry (24 hours from NOW)
     const now = new Date();
@@ -51,7 +51,7 @@ class InviteService {
     const { error: updateError } = await supabase
         .from('friend_invites')
         .update({ 
-            is_active: false, // Link is now dead
+            is_active: true,
             respondent_id: respondentId,
             chat_started_at: now.toISOString(),
             chat_expires_at: expiresAt.toISOString()
@@ -95,8 +95,10 @@ class InviteService {
 
       // Filter: Show Pending items AND Active chats (not expired)
       return data.filter(item => {
-          if (item.is_active) return true; // Show pending
-          return new Date(item.chat_expires_at) > new Date(); // Show active chats
+          if (item.chat_expires_at) {
+              return new Date(item.chat_expires_at) > new Date();
+          }
+          return item.is_active;
       });
   }
 
