@@ -73,7 +73,9 @@ class InviteService {
     return { 
         success: true, 
         roomId: yapRoomId, // Frontend sends user to /chat/yap_UUID
-        expiresAt 
+        expiresAt,
+        senderId: invite.sender_id,
+        respondentId: respondentId
     };
   }
 

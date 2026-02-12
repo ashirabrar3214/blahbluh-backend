@@ -327,15 +327,17 @@ class SocketService {
     });
 
     socket.on('join_firechat', async ({ roomId, userId }) => {
+      const inviteId = roomId.startsWith('yap_') ? roomId.replace('yap_', '') : roomId;
+      const dbRoomId = roomId.startsWith('yap_') ? roomId : `yap_${roomId}`;
+
       const { data: invite } = await supabase
         .from('friend_invites')
         .select('*')
-        .eq('id', roomId)
+        .eq('id', inviteId)
         .single();
 
       // Note: invite.is_active is false when chat starts. We check expiry instead.
       if (invite && new Date(invite.chat_expires_at) > new Date()) {
-        const dbRoomId = `yap_${roomId}`;
         socket.join(dbRoomId);
         
         // Notify the SENDER that their card was answered (the "notification")
@@ -345,7 +347,7 @@ class SocketService {
         if (partnerSocketId) {
           this.io.to(partnerSocketId).emit('firechat_notification', {
             message: "Your yapping card was answered!",
-            roomId: roomId
+            roomId: dbRoomId
           });
         }
       } else {
@@ -446,6 +448,26 @@ class SocketService {
           } else {
             console.log(`[SocketService] Cannot send email: Receiver ${receiverId} has no email set.`);
           }
+        } else if (chatId.startsWith('yap_')) {
+          // ✅ NEW: Persist FireChat messages
+          const { data: savedMessage, error } = await supabase
+            .from('messages')
+            .insert({
+              room_id: chatId,
+              sender_id: userId,
+              text: message
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          const messageData = {
+            ...data,
+            id: savedMessage.id,
+            timestamp: savedMessage.created_at,
+          };
+          io.to(chatId).emit('new-message', messageData);
         } else {
           // ... your existing random chat logic ...
           // console.log(`[SocketService] Random message processing: ${chatId}`);
