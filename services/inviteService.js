@@ -87,31 +87,29 @@ class InviteService {
 
   // 4. Get My Sent Cards (For "My Yaps" Dashboard)
   async getMyInvites(userId) {
-      // Fetch cards I sent that were answered (session active) OR are still pending
-      const now = new Date().toISOString();
-      
-      const { data, error } = await supabase
-        .from('friend_invites')
-        .select(`
-            *,
-            respondent:users!friend_invites_respondent_id_fkey(username, pfp, pfp_background)
-        `)
-        .eq('sender_id', userId)
-        .order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('friend_invites')
+      .select(`
+          *,
+          sender:users!friend_invites_sender_id_fkey(username, pfp, pfp_background),
+          respondent:users!friend_invites_respondent_id_fkey(username, pfp, pfp_background)
+      `)
+      // ✅ Change: Query both sender_id and respondent_id
+      .or(`sender_id.eq.${userId},respondent_id.eq.${userId}`)
+      .order('created_at', { ascending: false });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      // Filter: Show Pending items AND Active chats (not expired)
-      return data.filter(item => {
-        // answered chat still alive
-        if (item.chat_expires_at) {
-          return new Date(item.chat_expires_at) > new Date();
-        }
+    return data.filter(item => {
+      // Show if chat is still alive
+      if (item.chat_expires_at) {
+        return new Date(item.chat_expires_at) > new Date();
+      }
 
-        // pending invite is only valid if still active AND not expired AND not answered
-        const notExpired = new Date(item.expires_at) > new Date();
-        return item.is_active && !item.respondent_id && notExpired;
-      });
+      // Or if it's a pending card I sent
+      const notExpired = new Date(item.expires_at) > new Date();
+      return item.sender_id === userId && item.is_active && !item.respondent_id && notExpired;
+    });
   }
 
   // 5. Get Session Data (For the Chat Window)

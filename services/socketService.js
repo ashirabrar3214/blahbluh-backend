@@ -356,7 +356,8 @@ class SocketService {
         }
 
         const { chatId, message } = data;
-        const userId = socket.userId; // Trusted ID attached during register-user
+        // ✅ Change: Use the ID from the payload if socket.userId isn't set yet
+        const userId = socket.userId || data.userId; 
         data.userId = userId; // Ensure emitted message uses the trusted ID
         
         // 3. STORE & BROADCAST
