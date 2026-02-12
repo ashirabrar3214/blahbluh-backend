@@ -5,15 +5,17 @@ const supabase = require('../config/supabase');
 class InviteService {
 
   // 1. Create the Card (Unchanged)
-  async createInvite(senderId, promptText, promptType = 'text', promptOptions = null) {
+  async createInvite(senderId, promptText, promptType = 'text', promptOptions = []) {
     const { data, error } = await supabase
       .from('friend_invites')
       .insert({
         sender_id: senderId,
         prompt_text: promptText,
-        prompt_type: promptType,
-        prompt_options: promptOptions,
-        is_active: true
+        prompt_type: promptType,        // Use the new column
+        prompt_options: promptOptions,  // Use the new column
+        is_active: true,
+        created_at: new Date().toISOString(),
+        chat_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24h expiry
       })
       .select()
       .single();

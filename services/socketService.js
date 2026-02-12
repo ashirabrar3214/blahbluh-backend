@@ -294,40 +294,30 @@ class SocketService {
       // console.log(`[skip-partner] chat deleted chatId=${chatId}`);
     });
 
-    // ✅ CONSOLIDATED JOIN LOGIC
+    // Replace separate join_room/join_firechat with a unified join-chat
     socket.on('join-chat', async ({ chatId, userId }) => {
-      const uid = userId || socket.userId;
-      if (!chatId || !uid) return;
-
-      // 1. Always join the socket room
+      if (!chatId || !userId) return;
       socket.join(chatId);
 
-      // 2. Handle FireChat (yap_) specific logic
       if (chatId.startsWith('yap_')) {
-        const inviteId = chatId.replace('yap_', '');
-        
-        const { data: invite } = await supabase
-          .from('friend_invites')
+        // 1. Fetch History for the FireChat
+        const { data: history } = await supabase
+          .from('messages')
           .select('*')
-          .eq('id', inviteId)
-          .single();
+          .eq('room_id', chatId)
+          .order('created_at', { ascending: true });
+        
+        socket.emit('chat_history', history);
 
-        if (invite) {
-          // Send History
-          const { data: history } = await supabase
-            .from('messages')
-            .select('*')
-            .eq('room_id', chatId)
-            .order('created_at', { ascending: true });
-          
-          socket.emit('chat_history', history);
-
-          // Notify the partner if they are online
-          const partnerId = invite.sender_id === uid ? invite.respondent_id : invite.sender_id;
-          const partnerSocketId = this.userSessions.get(partnerId);
-          if (partnerSocketId) {
-            this.io.to(partnerSocketId).emit('firechat_notification', {
-              message: "Your partner joined the FireChat!",
+        // 2. Notify the owner of the card that someone joined
+        const inviteId = chatId.replace('yap_', '');
+        const { data: invite } = await supabase.from('friend_invites').select('sender_id').eq('id', inviteId).single();
+        
+        if (invite && invite.sender_id !== userId) {
+          const ownerSocketId = this.userSessions.get(invite.sender_id);
+          if (ownerSocketId) {
+            this.io.to(ownerSocketId).emit('firechat_notification', {
+              message: "Someone answered your Yapping Card!",
               roomId: chatId
             });
           }
