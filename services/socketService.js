@@ -449,7 +449,6 @@ class SocketService {
             console.log(`[SocketService] Cannot send email: Receiver ${receiverId} has no email set.`);
           }
         } else if (chatId.startsWith('yap_')) {
-          // ✅ NEW: Persist FireChat messages
           const { data: savedMessage, error } = await supabase
             .from('messages')
             .insert({

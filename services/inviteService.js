@@ -5,12 +5,14 @@ const supabase = require('../config/supabase');
 class InviteService {
 
   // 1. Create the Card (Unchanged)
-  async createInvite(senderId, promptText) {
+  async createInvite(senderId, promptText, promptType = 'text', promptOptions = null) {
     const { data, error } = await supabase
       .from('friend_invites')
       .insert({
         sender_id: senderId,
         prompt_text: promptText,
+        prompt_type: promptType,
+        prompt_options: promptOptions,
         is_active: true
       })
       .select()
@@ -37,7 +39,9 @@ class InviteService {
     const invite = await this.getInvite(inviteId);
     
     if (invite.sender_id === respondentId) throw new Error("You can't answer your own card");
-    if (invite.respondent_id) throw new Error("This card was already answered!");
+    if (invite.respondent_id) {
+      return { alreadyUsed: true, roomId: `yap_${inviteId}` };
+    }
 
     // A. Calculate Expiry (24 hours from NOW)
     const now = new Date();

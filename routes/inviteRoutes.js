@@ -5,8 +5,8 @@ const inviteService = require('../services/inviteService');
 // Create Invite
 router.post('/create', async (req, res) => {
   try {
-    const { senderId, promptText } = req.body;
-    const invite = await inviteService.createInvite(senderId, promptText);
+    const { senderId, promptText, promptType, promptOptions } = req.body;
+    const invite = await inviteService.createInvite(senderId, promptText, promptType, promptOptions);
     
     // Use env variable for the link, fallback to localhost for dev
     const baseUrl = process.env.CLIENT_URL || 'http://localhost:3000';
