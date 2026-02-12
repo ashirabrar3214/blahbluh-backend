@@ -419,21 +419,31 @@ class SocketService {
             console.log(`[SocketService] Cannot send email: Receiver ${receiverId} has no email set.`);
           }
         } else if (chatId.startsWith('yap_')) {
+          // 1. Save to the 'messages' table (used for FireChats)
+          const msgType = data.type || 'text';
+          const insertData = {
+            room_id: chatId,
+            sender_id: userId,
+            text: (msgType === 'text') ? message : null,
+            image_url: (msgType === 'gif' || msgType === 'sticker') ? message : null,
+            video_url: (msgType === 'clip') ? message : null,
+            type: msgType,
+            created_at: new Date().toISOString()
+          };
+
           const { data: savedMessage, error } = await supabase
             .from('messages')
-            .insert({
-              room_id: chatId,
-              sender_id: userId,
-              text: message
-            })
+            .insert(insertData)
             .select()
             .single();
 
           if (error) throw error;
 
+          // 2. Broadcast the official message object back to the room
           const messageData = {
             ...data,
             id: savedMessage.id,
+            userId: userId, // Ensure correct ID is sent
             timestamp: savedMessage.created_at,
           };
           io.to(chatId).emit('new-message', messageData);
