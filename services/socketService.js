@@ -294,64 +294,44 @@ class SocketService {
       // console.log(`[skip-partner] chat deleted chatId=${chatId}`);
     });
 
-    socket.on('join-chat', ({ chatId }) => {
-      // console.log(`[SocketService] 'join-chat' received for ${chatId} from ${socket.id}`);
+    // ✅ CONSOLIDATED JOIN LOGIC
+    socket.on('join-chat', async ({ chatId, userId }) => {
+      const uid = userId || socket.userId;
+      if (!chatId || !uid) return;
+
+      // 1. Always join the socket room
       socket.join(chatId);
-    });
 
-    socket.on('join_room', async ({ roomId, userId }) => {
-      // 1. Verify user is either sender or respondent of this invite
-      // Handle prefix mismatch: friend_invites uses UUID, messages uses yap_UUID
-      const inviteId = roomId.startsWith('yap_') ? roomId.replace('yap_', '') : roomId;
-      const dbRoomId = roomId.startsWith('yap_') ? roomId : `yap_${roomId}`;
-
-      const { data: invite } = await supabase
-        .from('friend_invites')
-        .select('*')
-        .eq('id', inviteId)
-        .single();
-
-      if (invite && (invite.sender_id === userId || invite.respondent_id === userId)) {
-        socket.join(dbRoomId);
-        console.log(`User ${userId} re-joined room ${dbRoomId}`);
+      // 2. Handle FireChat (yap_) specific logic
+      if (chatId.startsWith('yap_')) {
+        const inviteId = chatId.replace('yap_', '');
         
-        // 2. Fetch last few messages to populate the chat
-        const { data: history } = await supabase
-          .from('messages')
+        const { data: invite } = await supabase
+          .from('friend_invites')
           .select('*')
-          .eq('room_id', dbRoomId)
-          .order('created_at', { ascending: true });
+          .eq('id', inviteId)
+          .single();
 
-        socket.emit('chat_history', history);
-      }
-    });
+        if (invite) {
+          // Send History
+          const { data: history } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('room_id', chatId)
+            .order('created_at', { ascending: true });
+          
+          socket.emit('chat_history', history);
 
-    socket.on('join_firechat', async ({ roomId, userId }) => {
-      const inviteId = roomId.startsWith('yap_') ? roomId.replace('yap_', '') : roomId;
-      const dbRoomId = roomId.startsWith('yap_') ? roomId : `yap_${roomId}`;
-
-      const { data: invite } = await supabase
-        .from('friend_invites')
-        .select('*')
-        .eq('id', inviteId)
-        .single();
-
-      // Note: invite.is_active is false when chat starts. We check expiry instead.
-      if (invite && new Date(invite.chat_expires_at) > new Date()) {
-        socket.join(dbRoomId);
-        
-        // Notify the SENDER that their card was answered (the "notification")
-        const partnerId = invite.sender_id === userId ? invite.respondent_id : invite.sender_id;
-        const partnerSocketId = this.userSessions.get(partnerId);
-        
-        if (partnerSocketId) {
-          this.io.to(partnerSocketId).emit('firechat_notification', {
-            message: "Your yapping card was answered!",
-            roomId: dbRoomId
-          });
+          // Notify the partner if they are online
+          const partnerId = invite.sender_id === uid ? invite.respondent_id : invite.sender_id;
+          const partnerSocketId = this.userSessions.get(partnerId);
+          if (partnerSocketId) {
+            this.io.to(partnerSocketId).emit('firechat_notification', {
+              message: "Your partner joined the FireChat!",
+              roomId: chatId
+            });
+          }
         }
-      } else {
-        socket.emit('firechat_error', "This chat has expired or is invalid.");
       }
     });
 
