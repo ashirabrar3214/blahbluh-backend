@@ -71,6 +71,7 @@ class InviteService {
         room_id: yapRoomId,
         sender_id: respondentId,
         text: answerText,
+        type: 'text', // ✅ Add this
         created_at: now.toISOString()
     });
 
@@ -89,13 +90,10 @@ class InviteService {
   async getMyInvites(userId) {
     const { data, error } = await supabase
       .from('friend_invites')
-      .select(`
-          *,
-          sender:users!friend_invites_sender_id_fkey(username, pfp, pfp_background),
-          respondent:users!friend_invites_respondent_id_fkey(username, pfp, pfp_background)
-      `)
-      // ✅ Change: Query both sender_id and respondent_id
-      .or(`sender_id.eq.${userId},respondent_id.eq.${userId}`)
+      .select(`*, 
+          sender:users!friend_invites_sender_id_fkey(username, pfp),
+          respondent:users!friend_invites_respondent_id_fkey(username, pfp)`)
+      .or(`sender_id.eq.${userId},respondent_id.eq.${userId}`) // ✅ Key Change
       .order('created_at', { ascending: false });
 
     if (error) throw error;
